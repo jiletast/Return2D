@@ -1,39 +1,80 @@
-import React, { useState, useRef } from 'react';
-import type { GameObject, GameAsset, Behavior, Variable, Scene, ProjectData, ObjectScript, Action, ObjectTrigger, Animation, CollisionProperties } from '../types';
-import { BehaviorDefinition, availableBehaviors } from '../behaviors/definitions';
-import { BehaviorModal } from './BehaviorModal';
-import { TrashIcon } from './icons/TrashIcon';
-import { PlusIcon } from './icons/PlusIcon';
+import React, { useState } from 'react';
+import type { GameObject, GameAsset, Scene, ProjectData, Variable } from '../types';
+import { 
+  Box, 
+  Settings, 
+  Cpu, 
+  Image as ImageIcon, 
+  Shield, 
+  ChevronRight, 
+  ChevronDown, 
+  Trash2, 
+  Copy, 
+  Grid,
+  Save,
+  Lock,
+  Plus,
+  Eye,
+  EyeOff,
+  ArrowLeft,
+  Upload,
+  FileImage,
+  Zap,
+  Database,
+  Video,
+  Film
+} from 'lucide-react';
 import { useLanguage } from '../LanguageContext';
+import { availableBehaviors } from '../behaviors/definitions';
 
-const CollapseIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-    </svg>
+const SectionHeader: React.FC<{ 
+    title: string, 
+    icon: React.ReactNode, 
+    isOpen: boolean, 
+    onToggle: () => void,
+    action?: React.ReactNode
+}> = ({ title, icon, isOpen, onToggle, action }) => (
+    <div className="flex flex-col">
+        <div 
+            onClick={onToggle}
+            className="flex items-center gap-2 h-8 px-2 bg-[#2a2a2a] hover:bg-[#333333] cursor-pointer transition-colors border-b border-[#1a1a1a]"
+        >
+            <div className="w-4 flex items-center justify-center text-gray-500">
+                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </div>
+            <div className="w-4 flex items-center justify-center text-indigo-400">
+                {icon}
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300 flex-grow">{title}</span>
+            {action && <div onClick={e => e.stopPropagation()}>{action}</div>}
+        </div>
+    </div>
 );
 
-const ExpandIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-    </svg>
+const PropertyRow: React.FC<{ label: string, children: React.ReactNode }> = ({ label, children }) => (
+    <div className="flex items-center min-h-[28px] border-b border-[#1a1a1a] last:border-0 hover:bg-white/[0.02] transition-colors">
+        <span className="w-24 px-3 text-[11px] text-gray-500 truncate" title={label}>{label}</span>
+        <div className="flex-grow px-1">
+            {children}
+        </div>
+    </div>
 );
 
-const UpArrowIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" /></svg>;
-const DownArrowIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>;
-
-const CloneIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" />
-        <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h6a2 2 0 00-2-2H5z" />
-    </svg>
+const CompactInput: React.FC<{ 
+    value: string | number, 
+    onChange: (val: string | number) => void, 
+    type?: string,
+    width?: string,
+    placeholder?: string
+}> = ({ value, onChange, type = 'text', width = 'w-full', placeholder }) => (
+    <input 
+        type={type}
+        value={value}
+        onChange={e => onChange(type === 'number' ? (parseFloat(e.target.value) || 0) : e.target.value)}
+        placeholder={placeholder}
+        className={`${width} bg-[#1a1a1a] border border-transparent hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-0.5 text-[11px] text-gray-200 focus:outline-none transition-all`}
+    />
 );
-
-const FolderIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-    </svg>
-);
-
 
 interface PropertiesInspectorProps {
   selectedObject: GameObject | null;
@@ -42,1172 +83,1345 @@ interface PropertiesInspectorProps {
   onUpdateObject: (id: number, updates: Partial<GameObject>) => void;
   onDeleteObject: (id: number) => void;
   onCloneObject: (id: number) => void;
-  onAddAsset: (asset: GameAsset) => void;
+  onSaveAsGlobalObject?: (obj: GameObject) => void;
+  onAddAsset?: (asset: GameAsset) => void;
   width: number;
   onToggleCollapse: () => void;
 }
 
-const ItemSelectorModal: React.FC<{
-  title: string;
-  categorizedItems: { category: string, options: { value: string, label: string }[] }[];
-  onSelect: (value: string) => void;
-  onClose: () => void;
-}> = ({ title, categorizedItems, onSelect, onClose }) => {
-    const [activeCategory, setActiveCategory] = useState(categorizedItems[0].category);
-    
-    return (
-        <div className="absolute inset-0 bg-gray-900 bg-opacity-80 z-20 flex flex-col p-2" onClick={onClose}>
-            <div className="bg-gray-800 rounded-lg p-2 border border-gray-700 flex flex-col max-h-full" onClick={e => e.stopPropagation()}>
-                <h4 className="text-sm font-bold mb-2 p-2 text-center border-b border-gray-700">{title}</h4>
-                <div className="flex-grow flex min-h-[200px]">
-                    <aside className="w-1/3 border-r border-gray-700 pr-2 overflow-y-auto">
-                        {categorizedItems.map(group => (
-                            <button key={group.category} onClick={() => setActiveCategory(group.category)} 
-                                className={`w-full text-left text-sm p-2 rounded-md ${activeCategory === group.category ? 'bg-indigo-600' : 'hover:bg-gray-700'}`}>
-                                {group.category}
-                            </button>
-                        ))}
-                    </aside>
-                    <main className="w-2/3 pl-2 overflow-y-auto">
-                        <ul>
-                        {(categorizedItems.find(g => g.category === activeCategory)?.options || []).map(option => (
-                            <li key={option.value} onClick={() => onSelect(option.value)} 
-                                className="p-2 rounded-md hover:bg-indigo-600 cursor-pointer">
-                                <h5 className="font-semibold text-sm">{option.label}</h5>
-                            </li>
-                        ))}
-                        </ul>
-                    </main>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const PropertyInput: React.FC<{ label: string; value: string | number; onChange: (value: string | number) => void; type?: string; step?: number }> = ({ label, value, onChange, type = 'text', step = 1 }) => (
-  <div className="flex flex-col">
-    <label className="text-xs text-gray-400 mb-1">{label}</label>
-    <input
-      type={type}
-      step={step}
-      value={value}
-      onChange={(e) => onChange(type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)}
-      className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm w-full focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-    />
-  </div>
-);
-
-const AssetPickerModal: React.FC<{assets: GameAsset[], onSelect: (asset: GameAsset) => void, onClose: () => void}> = ({assets, onSelect, onClose}) => {
-    const { t } = useLanguage();
-    const imageAssets = assets.filter(a => a.type === 'image');
-    return (
-        <div className="absolute inset-0 bg-black bg-opacity-80 z-10 flex flex-col p-2" onClick={onClose}>
-            <div className="bg-gray-900 rounded-lg p-2 border border-gray-800 flex flex-col max-h-full" onClick={e => e.stopPropagation()}>
-                <h4 className="text-sm font-bold mb-2 text-center">{t('properties.selectAsset')}</h4>
-                <div className="grid grid-cols-3 gap-2 overflow-y-auto">
-                    {imageAssets.map(asset => (
-                        <div key={asset.id} className="flex flex-col items-center p-1 bg-gray-800 rounded-md cursor-pointer hover:bg-indigo-600" onClick={() => onSelect(asset)}>
-                            <img src={asset.url} alt={asset.name} className="w-16 h-16 object-cover rounded-sm" />
-                            <span className="text-xs mt-1 truncate w-full text-center">{asset.name}</span>
-                        </div>
-                    ))}
-                    {imageAssets.length === 0 && <p className="col-span-3 text-xs text-gray-500 text-center py-4">{t('properties.noAssets')}</p>}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const parseValue = (value: string): string | number | boolean => {
-    const trimmedValue = value.trim();
-    if (trimmedValue.toLowerCase() === 'true') return true;
-    if (trimmedValue.toLowerCase() === 'false') return false;
-    const num = Number(trimmedValue);
-    if (trimmedValue !== '' && !isNaN(num)) return num;
-    return value;
-};
-
-const ObjectVariablesEditor: React.FC<{
-    variables: Variable[], 
-    onUpdate: (vars: Variable[]) => void
-}> = ({ variables, onUpdate }) => {
-    const { t } = useLanguage();
-    const handleAdd = () => {
-        const newName = `miVar${variables.length}`;
-        onUpdate([...variables, { name: newName, value: 0 }]);
-    };
-    const handleUpdate = (index: number, newVar: Variable) => {
-        const newVars = [...variables];
-        newVars[index] = newVar;
-        onUpdate(newVars);
-    };
-    const handleRemove = (index: number) => {
-        onUpdate(variables.filter((_, i) => i !== index));
-    };
-
-    return (
-        <div className="pt-4 border-t border-gray-800 space-y-2">
-            <div className="flex justify-between items-center">
-                <h3 className="font-semibold text-xs uppercase tracking-wider">{t('properties.objectVariables')}</h3>
-                <button onClick={handleAdd} className="p-1.5 bg-gray-800 hover:bg-indigo-600 rounded-md"><PlusIcon /></button>
-            </div>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {variables.map((v, i) => (
-                    <div key={i} className="bg-gray-800/50 p-2 rounded-md border border-gray-700 space-y-2">
-                        <div className="flex items-center gap-2">
-                            <input 
-                                type="text"
-                                value={v.name}
-                                onChange={e => handleUpdate(i, {...v, name: e.target.value})}
-                                className="bg-gray-700 flex-grow border border-gray-600 rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                                placeholder={t('properties.variableName')}
-                            />
-                             <button onClick={() => handleRemove(i)} className="p-1 hover:bg-red-500/50 rounded-full"><TrashIcon /></button>
-                        </div>
-                        <input 
-                            type="text"
-                            value={String(v.value)}
-                            onChange={e => handleUpdate(i, {...v, value: parseValue(e.target.value)})}
-                            className="bg-gray-700 w-full border border-gray-600 rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                            placeholder={t('properties.variableValue')}
-                        />
-                    </div>
-                ))}
-                {variables.length === 0 && <p className="text-xs text-gray-500 text-center py-2">{t('properties.noVariables')}</p>}
-            </div>
-        </div>
-    );
-};
-
-const ObjectScriptsEditor: React.FC<{
-    scripts: ObjectScript[];
-    onUpdate: (scripts: ObjectScript[]) => void;
-    projectData: ProjectData;
-}> = ({ scripts, onUpdate, projectData }) => {
-    const { t } = useLanguage();
-    const [selectorState, setSelectorState] = useState<{type: 'trigger' | 'action', scriptId: string, actionIndex?: number} | null>(null);
-    
-    const { scenes, assets, animations, globalVariables } = projectData;
-    const objectNames = scenes.find(s => s.id === projectData.activeSceneId)?.gameObjects.map(o => o.name) ?? [];
-
-    // FIX: Explicitly type categorizedTriggerOptions to avoid type widening of string literals.
-    const categorizedTriggerOptions: {
-      category: string;
-      options: {
-          value: ObjectTrigger;
-          label: string;
-          needsTarget?: boolean;
-          needsParams?: string[];
-      }[];
-    }[] = [
-      { category: t('properties.system'), options: [
-          { value: 'OnStart', label: t('properties.onStart') },
-          { value: 'OnUpdate', label: t('properties.onUpdate') },
-      ]},
-      { category: t('trigger.onClick'), options: [{ value: 'OnClick', label: t('properties.onClick') }] },
-      { category: t('properties.onCollision'), options: [{ value: 'OnCollisionWith', label: t('properties.collisionWith'), needsTarget: true }] },
-      { category: t('properties.variables'), options: [{ value: 'CompareObjectVariable', label: t('properties.compareVariable'), needsParams: ['variable', 'operator', 'value'] }] },
-    ];
-    const triggerOptions: { value: ObjectTrigger, label: string, needsTarget?: boolean, needsParams?: string[] }[] = categorizedTriggerOptions.flatMap(c => c.options);
-
-    // FIX: Explicitly type categorizedActionOptions to avoid type widening of string literals.
-    const categorizedActionOptions: {
-        category: string;
-        options: {
-            value: Action['action'];
-            label: string;
-            needsParams?: string[];
-        }[];
-    }[] = [
-      { category: t('hierarchy.objects'), options: [
-        { value: 'Destroy', label: t('properties.destroy') },
-        { value: 'CreateObject', label: t('properties.createObject') },
-        { value: 'SetObjectPosition', label: t('properties.setPosition'), needsParams: ['x', 'y'] },
-        { value: 'PlayAnimation', label: t('properties.playAnimation'), needsParams: ['animationId'] },
-      ]},
-      { category: t('sidebar.scenes'), options: [{ value: 'GoToScene', label: t('properties.goToScene'), needsParams: ['sceneName'] }] },
-      { category: t('sidebar.variables'), options: [
-        { value: 'ModifyStat', label: t('properties.modifyStat'), needsParams: ['stat', 'operation', 'value'] },
-        { value: 'AddToVariable', label: t('properties.addToVariable'), needsParams: ['variable', 'value'] },
-        { value: 'SetVariable', label: t('properties.setVariable'), needsParams: ['variable', 'value'] },
-        { value: 'AddToObjectVariable', label: t('properties.addToObjectVariable'), needsParams: ['variable', 'value'] },
-        { value: 'SetObjectVariable', label: t('properties.setObjectVariable'), needsParams: ['variable', 'value'] },
-      ]},
-    ];
-    const actionOptions: { value: Action['action'], label: string, needsParams?: string[] }[] = categorizedActionOptions.flatMap(c => c.options);
-
-    const addScript = () => {
-        const newScript: ObjectScript = { id: `script_${Date.now()}`, trigger: 'OnClick', actions: [] };
-        onUpdate([...(scripts || []), newScript]);
-    };
-
-    const removeScript = (scriptId: string) => onUpdate(scripts.filter(s => s.id !== scriptId));
-
-    const updateScript = (scriptId: string, updates: Partial<ObjectScript>) => {
-        onUpdate(scripts.map(s => s.id === scriptId ? { ...s, ...updates } : s));
-    };
-    
-    const addAction = (scriptId: string) => {
-        const newAction: Action = { object: 'Self', action: 'Destroy', params: {} };
-        onUpdate(scripts.map(s => s.id === scriptId ? { ...s, actions: [...s.actions, newAction] } : s));
-    };
-
-    const removeAction = (scriptId: string, actionIndex: number) => {
-        onUpdate(scripts.map(s => s.id === scriptId ? { ...s, actions: s.actions.filter((_, i) => i !== actionIndex) } : s));
-    };
-    
-    const updateAction = (scriptId: string, actionIndex: number, updates: Partial<Action>) => {
-        onUpdate(scripts.map(s => {
-            if (s.id === scriptId) {
-                const newActions = [...s.actions];
-                const oldAction = newActions[actionIndex];
-                newActions[actionIndex] = { ...oldAction, ...updates };
-                // Reset params if action type changes
-                if (updates.action && updates.action !== oldAction.action) {
-                    newActions[actionIndex].params = {};
-                }
-                return { ...s, actions: newActions };
-            }
-            return s;
-        }));
-    };
-
-    const renderActionParams = (scriptId: string, actionIndex: number, action: Action) => {
-        const selectedOption = actionOptions.find(opt => opt.value === action.action);
-        if (!selectedOption?.needsParams) return null;
-
-        const updateParams = (newParams: Record<string, any>) => {
-            updateAction(scriptId, actionIndex, { params: {...action.params, ...newParams} });
-        };
-
-        return <div className="w-full bg-gray-700/50 p-1.5 rounded-md mt-1 space-y-1.5 text-xs">
-            {selectedOption.needsParams.map(param => {
-                 switch (param) {
-                    case 'sceneName':
-                        return <select key={param} className="input-field-sm" value={action.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
-                            <option value="">{t('properties.selectScene')}</option>
-                            {scenes.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                        </select>;
-                    case 'animationId':
-                         return <select key={param} className="input-field-sm" value={action.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
-                            <option value="">{t('properties.selectAnimation')}</option>
-                            {animations.map(anim => <option key={anim.id} value={anim.id}>{anim.name}</option>)}
-                        </select>;
-                     case 'variable':
-                         if (action.action === 'SetVariable' || action.action === 'AddToVariable') {
-                            return <select key={param} className="input-field-sm" value={action.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
-                                <option value="">{t('properties.globalVariable')}</option>
-                                {(globalVariables || []).map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
-                            </select>;
-                         }
-                         return <input key={param} type="text" placeholder={t('properties.variableName')} className="input-field-sm" value={action.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
-                    case 'stat':
-                        return <select key={param} className="input-field-sm" value={action.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
-                            <option value="">{t('properties.stat')}</option><option value="hp">HP</option><option value="maxHp">{t('properties.maxHp')}</option><option value="attack">{t('properties.attack')}</option>
-                        </select>;
-                    case 'operation':
-                        return <select key={param} className="input-field-sm" value={action.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
-                            <option value="add">{t('properties.increase')}</option><option value="subtract">{t('properties.decrease')}</option><option value="set">{t('properties.set')}</option>
-                        </select>;
-                    case 'x': case 'y':
-                        return <input key={param} type="number" placeholder={param.toUpperCase()} className="input-field-sm w-16" value={action.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
-                    default:
-                        return <input key={param} type="text" placeholder={param} className="input-field-sm" value={action.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
-                }
-            })}
-        </div>
-    }
-    
-    const renderTriggerParams = (script: ObjectScript) => {
-        const selectedOption = triggerOptions.find(opt => opt.value === script.trigger);
-        if (!selectedOption?.needsParams) return null;
-        
-        const updateParams = (newParams: Record<string, any>) => {
-            updateScript(script.id, { params: {...script.params, ...newParams} });
-        };
-        
-        return <div className="w-full bg-gray-700/50 p-1.5 rounded-md mt-1 space-y-1.5 text-xs">
-            {selectedOption.needsParams.map(param => {
-                 switch (param) {
-                    case 'variable':
-                        return <input key={param} type="text" placeholder={t('properties.variableName')} className="input-field-sm" value={script.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
-                    case 'operator':
-                         return <select key={param} className="input-field-sm" value={script.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
-                            <option value="==">== ({t('properties.operator')} ==)</option>
-                            <option value="!=">!= ({t('properties.operator')} !=)</option>
-                            <option value=">">&gt; ({t('properties.operator')} &gt;)</option>
-                            <option value="<">&lt; ({t('properties.operator')} &lt;)</option>
-                            <option value=">=">&gt;= ({t('properties.operator')} &gt;=)</option>
-                            <option value="<=">&lt;= ({t('properties.operator')} &lt;=)</option>
-                        </select>;
-                    default:
-                        return <input key={param} type="text" placeholder={param} className="input-field-sm" value={script.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
-                }
-            })}
-        </div>
-    }
-
-    return (
-        <div className="pt-4 border-t border-gray-800 space-y-2 relative">
-             {selectorState && <ItemSelectorModal 
-                title={selectorState.type === 'trigger' ? t('properties.selectTrigger') : t('properties.selectAction')}
-                categorizedItems={selectorState.type === 'trigger' ? categorizedTriggerOptions : categorizedActionOptions}
-                onClose={() => setSelectorState(null)}
-                onSelect={(value) => {
-                    if (selectorState.type === 'trigger') {
-                        updateScript(selectorState.scriptId, { trigger: value as ObjectTrigger, params: {} });
-                    } else if (selectorState.type === 'action' && selectorState.actionIndex !== undefined) {
-                        updateAction(selectorState.scriptId, selectorState.actionIndex, { action: value as Action['action'] })
-                    }
-                    setSelectorState(null);
-                }}
-             />}
-            <style>{`.input-field-sm { background-color: #374151; border: 1px solid #4b5563; border-radius: 0.25rem; padding: 0.125rem 0.25rem; font-size: 0.75rem; width: 100%; }`}</style>
-            <div className="flex justify-between items-center">
-                <h3 className="font-semibold text-xs uppercase tracking-wider">{t('properties.logicScripts')}</h3>
-                <button onClick={addScript} className="p-1.5 bg-gray-800 hover:bg-indigo-600 rounded-md"><PlusIcon /></button>
-            </div>
-             <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                {(scripts || []).map(script => (
-                    <div key={script.id} className="bg-gray-800/50 p-2 rounded-md border border-gray-700 space-y-2">
-                        <div className="flex items-center gap-2">
-                            <button 
-                                onClick={() => setSelectorState({type: 'trigger', scriptId: script.id})}
-                                className="bg-gray-700 flex-grow border border-gray-600 rounded-md px-2 py-1 text-sm text-left hover:bg-gray-600"
-                            >
-                                {triggerOptions.find(opt => opt.value === script.trigger)?.label || t('properties.selectTrigger')}
-                            </button>
-                            <button onClick={() => removeScript(script.id)} className="p-1 hover:bg-red-500/50 rounded-full"><TrashIcon /></button>
-                        </div>
-                        {triggerOptions.find(o => o.value === script.trigger)?.needsTarget && (
-                            <select 
-                                value={script.params?.targetObjectName ?? ''} 
-                                onChange={e => updateScript(script.id, { params: { targetObjectName: e.target.value } })}
-                                className="bg-gray-700 w-full border border-gray-600 rounded-md px-2 py-1 text-sm"
-                            >
-                                <option value="">{t('properties.selectTargetObject')}</option>
-                                {objectNames.map(name => <option key={name} value={name}>{name}</option>)}
-                            </select>
-                        )}
-                        {renderTriggerParams(script)}
-                        <div className="pl-2 border-l-2 border-gray-700 space-y-2">
-                            {script.actions.map((action, i) => (
-                                <div key={i} className="bg-gray-700/30 p-1.5 rounded">
-                                    <div className="flex items-center gap-1 text-xs">
-                                        <select value={action.object} onChange={e => updateAction(script.id, i, { object: e.target.value })} className="input-field-sm flex-1">
-                                            <option value="Self">Self ({t('properties.thisObject')})</option>
-                                            <option value="System">System</option>
-                                            {objectNames.map(name => <option key={name} value={name}>{name}</option>)}
-                                        </select>
-                                        <span className="text-gray-400">-&gt;</span>
-                                         <button 
-                                            onClick={() => setSelectorState({type: 'action', scriptId: script.id, actionIndex: i})}
-                                            className="input-field-sm flex-1 text-left hover:bg-gray-600"
-                                        >
-                                            {actionOptions.find(opt => opt.value === action.action)?.label || t('properties.selectAction')}
-                                        </button>
-                                        <button onClick={() => removeAction(script.id, i)} className="p-1 hover:text-red-400 text-lg leading-none">&times;</button>
-                                    </div>
-                                    {renderActionParams(script.id, i, action)}
-                                </div>
-                            ))}
-                            <button onClick={() => addAction(script.id)} className="text-xs text-indigo-400 hover:text-indigo-300">+ {t('properties.addAction')}</button>
-                        </div>
-                    </div>
-                ))}
-                 {(scripts || []).length === 0 && <p className="text-xs text-gray-500 text-center py-2">{t('properties.noScripts')}</p>}
-            </div>
-        </div>
-    );
-};
-
-
-const GlobalVariablesEditor: React.FC<{variables: Variable[], onUpdate: (vars: Variable[]) => void }> = ({ variables, onUpdate }) => {
-    const handleAdd = () => {
-        const newName = `var${variables.length}`;
-        onUpdate([...variables, { name: newName, value: 0 }]);
-    };
-    const handleUpdate = (index: number, newVar: Variable) => {
-        const newVars = [...variables];
-        newVars[index] = newVar;
-        onUpdate(newVars);
-    };
-    const handleRemove = (index: number) => {
-        onUpdate(variables.filter((_, i) => i !== index));
-    };
-
-    return (
-        <div className="border-t border-gray-800">
-            <div className="p-2 flex justify-between items-center">
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-400">Variables Globales</h2>
-                <button onClick={handleAdd} className="p-1.5 bg-gray-800 hover:bg-indigo-600 rounded-md"><PlusIcon /></button>
-            </div>
-            <div className="p-4 pt-0 space-y-3 overflow-y-auto max-h-48">
-                {variables.map((v, i) => (
-                    <div key={i} className="bg-gray-800/50 p-2 rounded-md border border-gray-700 space-y-2">
-                        <div className="flex items-center gap-2">
-                            <input 
-                                type="text"
-                                value={v.name}
-                                onChange={e => handleUpdate(i, {...v, name: e.target.value})}
-                                className="bg-gray-700 flex-grow border border-gray-600 rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                                placeholder="Nombre de Variable"
-                            />
-                             <button onClick={() => handleRemove(i)} className="p-1 hover:bg-red-500/50 rounded-full"><TrashIcon /></button>
-                        </div>
-                        <input 
-                            type="text"
-                            value={String(v.value)}
-                            onChange={e => handleUpdate(i, {...v, value: parseValue(e.target.value)})}
-                            className="bg-gray-700 w-full border border-gray-600 rounded-md px-2 py-1 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                            placeholder="Valor Inicial"
-                        />
-                    </div>
-                ))}
-                {variables.length === 0 && <p className="text-sm text-gray-500 text-center py-4">No hay variables globales.</p>}
-            </div>
-        </div>
-    );
-};
-
-const ScenePropertiesEditor: React.FC<{
-    scene: Scene;
-    onUpdate: (updates: Partial<Scene>) => void;
-    assets: GameAsset[];
-}> = ({ scene, onUpdate, assets }) => {
-    const { t } = useLanguage();
-    const audioAssets = assets.filter(a => a.type === 'audio');
-    
-    return (
-        <div className="space-y-4">
-            <PropertyInput 
-                label={t('properties.sceneName')} 
-                value={scene.name} 
-                onChange={(val) => onUpdate({ name: val as string })} 
-            />
-            <div className="flex flex-col">
-                <label className="text-xs text-gray-400 mb-1">{t('properties.backgroundColor')}</label>
-                <input 
-                    type="color" 
-                    value={scene.backgroundColor} 
-                    onChange={(e) => onUpdate({ backgroundColor: e.target.value })} 
-                    className="w-full h-8 bg-gray-800 border border-gray-700 rounded-md cursor-pointer" 
-                />
-            </div>
-            <div className="flex flex-col">
-                <label className="text-xs text-gray-400 mb-1">{t('properties.backgroundMusic')}</label>
-                <select
-                    value={scene.backgroundMusicId || ''}
-                    onChange={(e) => onUpdate({ backgroundMusicId: e.target.value || undefined })}
-                    className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm w-full focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                >
-                    <option value="">{t('properties.none')}</option>
-                    {audioAssets.map(asset => (
-                        <option key={asset.id} value={asset.id}>{asset.name}</option>
-                    ))}
-                </select>
-            </div>
-            <PropertyInput 
-                label={t('properties.defaultZoom')} 
-                type="number"
-                step={0.1}
-                value={scene.defaultZoom || 1} 
-                onChange={(val) => onUpdate({ defaultZoom: val as number })} 
-            />
-            <div className="pt-4 border-t border-gray-800 space-y-2">
-                 <h3 className="font-semibold text-xs uppercase tracking-wider text-gray-400">{t('properties.cameraBounds')}</h3>
-                 <label className="flex items-center gap-2 text-sm text-gray-300 bg-gray-800/50 p-2 rounded-md">
-                    <input 
-                        type="checkbox" 
-                        checked={scene.cameraBounds?.enabled || false} 
-                        onChange={(e) => onUpdate({ cameraBounds: { ...scene.cameraBounds!, enabled: e.target.checked } })}
-                        className="form-checkbox bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500" />
-                    {t('properties.enableBounds')}
-                </label>
-                {scene.cameraBounds?.enabled && (
-                    <div className="grid grid-cols-2 gap-2">
-                        <PropertyInput label="X" type="number" value={scene.cameraBounds.x} onChange={(val) => onUpdate({ cameraBounds: { ...scene.cameraBounds!, x: val as number } })} />
-                        <PropertyInput label="Y" type="number" value={scene.cameraBounds.y} onChange={(val) => onUpdate({ cameraBounds: { ...scene.cameraBounds!, y: val as number } })} />
-                        <PropertyInput label={t('common.width')} type="number" value={scene.cameraBounds.width} onChange={(val) => onUpdate({ cameraBounds: { ...scene.cameraBounds!, width: val as number } })} />
-                        <PropertyInput label={t('common.height')} type="number" value={scene.cameraBounds.height} onChange={(val) => onUpdate({ cameraBounds: { ...scene.cameraBounds!, height: val as number } })} />
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
-const GameSettingsEditor: React.FC<{
-    projectData: ProjectData;
-    onUpdate: (updates: Partial<ProjectData>) => void;
-}> = ({ projectData, onUpdate }) => {
-    const { t } = useLanguage();
-    const { orientation = 'landscape', gameWidth = 1024, gameHeight = 768, joystick } = projectData;
-
-    const handleOrientationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const newOrientation = e.target.value as 'landscape' | 'portrait';
-        const isLandscape = gameWidth > gameHeight;
-        
-        let newWidth = gameWidth;
-        let newHeight = gameHeight;
-
-        if (newOrientation === 'landscape' && !isLandscape) {
-            [newWidth, newHeight] = [newHeight, newWidth];
-        } else if (newOrientation === 'portrait' && isLandscape) {
-            [newWidth, newHeight] = [newHeight, newWidth];
-        }
-
-        onUpdate({ 
-            orientation: newOrientation,
-            gameWidth: newWidth,
-            gameHeight: newHeight,
-        });
-    };
-    
-    const landscapeResolutions = [
-        { name: "SD (16:9)", width: 640, height: 360 },
-        { name: "FWVGA (16:9)", width: 854, height: 480 },
-        { name: "qHD (16:9)", width: 960, height: 540 },
-        { name: "XGA (4:3)", width: 1024, height: 768 },
-        { name: "HD (16:9)", width: 1280, height: 720 },
-        { name: "Full HD (16:9)", width: 1920, height: 1080 },
-    ];
-
-    const portraitResolutions = [
-        { name: "SD (9:16)", width: 360, height: 640 },
-        { name: "FWVGA (9:16)", width: 480, height: 854 },
-        { name: "qHD (9:16)", width: 540, height: 960 },
-        { name: "XGA (3:4)", width: 768, height: 1024 },
-        { name: "HD (9:16)", width: 720, height: 1280 },
-        { name: "Full HD (9:16)", width: 1080, height: 1920 },
-    ];
-
-    const availableResolutions = orientation === 'landscape' ? landscapeResolutions : portraitResolutions;
-    const currentResValue = `${gameWidth}x${gameHeight}`;
-    const isCustom = !availableResolutions.some(r => r.width === gameWidth && r.height === gameHeight);
-
-    const handleResolutionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const value = e.target.value;
-        if (value === 'custom') return;
-        
-        const [width, height] = value.split('x').map(Number);
-        onUpdate({ gameWidth: width, gameHeight: height });
-    };
-
-    return (
-        <div className="space-y-4 pt-4 border-t border-gray-800">
-            <h3 className="font-semibold text-xs uppercase tracking-wider text-gray-400">{t('properties.gameSettings')}</h3>
-             <div className="flex flex-col">
-                <label className="text-xs text-gray-400 mb-1">{t('properties.orientation')}</label>
-                <select
-                    value={orientation}
-                    onChange={handleOrientationChange}
-                    className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm w-full focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                >
-                    <option value="landscape">{t('properties.landscape')}</option>
-                    <option value="portrait">{t('properties.portrait')}</option>
-                </select>
-            </div>
-            <div className="flex flex-col">
-                <label className="text-xs text-gray-400 mb-1">{t('properties.screenResolution')}</label>
-                <div className="flex gap-2 mb-2">
-                    <select
-                        value={isCustom ? 'custom' : currentResValue}
-                        onChange={handleResolutionChange}
-                        className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm flex-grow focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    >
-                        {isCustom && <option value="custom">{t('properties.custom')} ({gameWidth}x{gameHeight})</option>}
-                        {availableResolutions.map(res => (
-                            <option key={`${res.width}x${res.height}`} value={`${res.width}x${res.height}`}>
-                                {res.width} x {res.height} ({res.name})
-                            </option>
-                        ))}
-                    </select>
-                    <button 
-                        onClick={() => onUpdate({ gameWidth: window.innerWidth, gameHeight: window.innerHeight })}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded-md text-xs transition-colors"
-                        title={t('properties.adaptToScreen')}
-                    >
-                        {t('properties.adapt')}
-                    </button>
-                </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-                <PropertyInput label={t('properties.gameWidth')} type="number" value={gameWidth} onChange={(val) => onUpdate({ gameWidth: val as number })} />
-                <PropertyInput label={t('properties.gameHeight')} type="number" value={gameHeight} onChange={(val) => onUpdate({ gameHeight: val as number })} />
-            </div>
-            <label className="flex items-center gap-2 text-sm text-gray-300 bg-gray-800/50 p-2 rounded-md cursor-pointer">
-                <input 
-                    type="checkbox" 
-                    checked={projectData.responsive || false} 
-                    onChange={(e) => onUpdate({ responsive: e.target.checked })} 
-                    className="form-checkbox bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500" 
-                />
-                {t('properties.responsiveFullscreen')}
-            </label>
-            <p className="text-xs text-gray-500 px-2">{t('properties.responsiveDescription')}</p>
-            <div className="pt-4 border-t border-gray-700/50 space-y-2">
-                <h3 className="font-semibold text-xs uppercase tracking-wider text-gray-400">{t('properties.touchControls')}</h3>
-                <label className="flex items-center gap-2 text-sm text-gray-300 bg-gray-800/50 p-2 rounded-md">
-                    <input 
-                        type="checkbox" 
-                        checked={joystick?.enabled || false} 
-                        onChange={(e) => {
-                            const enabled = e.target.checked;
-                            const currentJoystick = projectData.joystick || {};
-                            onUpdate({ 
-                                joystick: { 
-                                    position: 'left', 
-                                    size: 120, 
-                                    opacity: 0.5,
-                                    ...currentJoystick,
-                                    enabled 
-                                } 
-                            });
-                        }}
-                        className="form-checkbox bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500" />
-                    {t('properties.enableJoystick')}
-                </label>
-                {joystick?.enabled && (
-                    <div className="space-y-2">
-                        <div className="flex flex-col bg-gray-800/50 p-2 rounded-md">
-                             <label className="text-xs text-gray-400 mb-1">{t('properties.joystickPosition')}</label>
-                             <div className="flex bg-gray-700 rounded-md p-1">
-                                <button
-                                    onClick={() => onUpdate({ joystick: { ...joystick, position: 'left' }})}
-                                    className={`flex-1 py-1 text-sm rounded transition-colors ${joystick.position !== 'right' ? 'bg-indigo-600 text-white' : 'hover:bg-gray-600'}`}
-                                >{t('properties.left')}</button>
-                                <button
-                                    onClick={() => onUpdate({ joystick: { ...joystick, position: 'right' }})}
-                                    className={`flex-1 py-1 text-sm rounded transition-colors ${joystick.position === 'right' ? 'bg-indigo-600 text-white' : 'hover:bg-gray-600'}`}
-                                >{t('properties.right')}</button>
-                            </div>
-                        </div>
-                        <div className="bg-gray-800/50 p-2 rounded-md grid grid-cols-2 gap-2">
-                             <PropertyInput 
-                                label={t('properties.sizePx')} 
-                                type="number" 
-                                value={joystick.size ?? 120} 
-                                onChange={v => onUpdate({ joystick: { ...joystick, size: v as number }})} 
-                            />
-                            <PropertyInput 
-                                label={t('properties.opacity')} 
-                                type="number" 
-                                step={0.1}
-                                value={joystick.opacity ?? 0.5} 
-                                onChange={v => onUpdate({ joystick: { ...joystick, opacity: Math.max(0, Math.min(1, v as number)) }})} 
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
-
-const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({ selectedObject, projectData, onUpdateProjectData, onUpdateObject, onDeleteObject, onCloneObject, onAddAsset, width, onToggleCollapse }) => {
+const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({ 
+    selectedObject, projectData, onUpdateProjectData, onUpdateObject, onDeleteObject, onCloneObject, onSaveAsGlobalObject, onAddAsset, width, onToggleCollapse 
+}) => {
   const { t } = useLanguage();
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [isBehaviorModalOpen, setIsBehaviorModalOpen] = useState(false);
-  const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
-  const appearanceFileInputRef = useRef<HTMLInputElement>(null);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['transform', 'appearance', 'logic', 'scene', 'settings', 'collision', 'tilemap', 'objectVariables', 'globalVariables', 'uiSettings']));
+  const [isSelectingAsset, setIsSelectingAsset] = useState(false);
+  const [selectingAssetType, setSelectingAssetType] = useState<'image' | 'video'>('image');
+  const [isAddingBehavior, setIsAddingBehavior] = useState(false);
+  const [expandedBehaviors, setExpandedBehaviors] = useState<Set<string>>(new Set());
+
+  const getBehaviorKey = (name: string): string => {
+    switch (name) {
+        case 'PlatformerCharacter': return 'platformer';
+        case 'Physics': return 'physics';
+        case 'Solid': return 'solid';
+        case 'TopDownRPGMovement': return 'topdown';
+        case 'Patrol': return 'patrol';
+        case 'Oscillate': return 'oscillate';
+        case 'Rotate': return 'rotate';
+        case 'Pulse': return 'pulse';
+        case 'FollowCamera': return 'camera';
+        case 'Tilemap': return 'tilemap';
+        default: return name.toLowerCase();
+    }
+  };
+
+  const toggleBehaviorExpand = (behaviorName: string) => {
+    setExpandedBehaviors(prev => {
+        const next = new Set(prev);
+        if (next.has(behaviorName)) next.delete(behaviorName);
+        else next.add(behaviorName);
+        return next;
+    });
+  };
+
+  const handleUpdateBehaviorProperty = (behaviorName: string, propKey: string, newValue: any) => {
+    if (!selectedObject) return;
+    const nextBehaviors = selectedObject.behaviors?.map(b => {
+        if (b.name === behaviorName) {
+            return {
+                ...b,
+                properties: {
+                    ...(b.properties || {}),
+                    [propKey]: newValue
+                }
+            };
+        }
+        return b;
+    }) || [];
+    handleUpdate({ behaviors: nextBehaviors });
+  };
   
-  const assets = projectData.assets;
-  const globalVariables = projectData.globalVariables ?? [];
   const activeScene = projectData.scenes.find(s => s.id === projectData.activeSceneId) ?? null;
 
-  const onUpdateScene = (sceneId: string, updates: Partial<Scene>) => {
-      const newScenes = projectData.scenes.map(s => s.id === sceneId ? {...s, ...updates} : s);
-      onUpdateProjectData({ scenes: newScenes });
+  const toggleSection = (id: string) => {
+    setOpenSections(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+    });
   };
-  
-  const onUpdateGlobalVariables = (variables: Variable[]) => {
-      onUpdateProjectData({ globalVariables: variables });
-  };
-
-  if (width < 50 && width > 0) {
-    return (
-        <aside className="bg-gray-900 border-l border-gray-800 flex-col shrink-0 transition-all duration-300 ease-in-out p-2 hidden md:flex" style={{ width: `${width}px` }}>
-             <button onClick={onToggleCollapse} title="Expandir Panel" className="p-2 hover:bg-gray-800 rounded-md">
-                <ExpandIcon />
-            </button>
-        </aside>
-    )
-  }
 
   const handleUpdate = (updates: Partial<GameObject>) => {
     if (!selectedObject) return;
     onUpdateObject(selectedObject.id, updates);
   };
-  
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.types.includes('application/game-asset')) {
-      e.dataTransfer.dropEffect = 'copy';
-      setIsDragOver(true);
-    }
+
+  const onUpdateScene = (updates: Partial<Scene>) => {
+    if (!activeScene) return;
+    const newScenes = projectData.scenes.map(s => s.id === activeScene.id ? {...s, ...updates} : s);
+    onUpdateProjectData({ scenes: newScenes });
   };
 
-  const handleDragLeave = () => setIsDragOver(false);
+  if (width <= 32) {
+    return (
+        <div className="flex flex-col items-center py-4 gap-4 bg-[#1a1a1a] h-full border-l border-[#333333]">
+            <button onClick={onToggleCollapse} className="text-gray-500 hover:text-white transition-colors"><ChevronRight className="rotate-180" size={20} /></button>
+            <div className="h-[1px] w-4 bg-white/10" />
+            <button className="text-gray-400"><Settings size={18} /></button>
+            <button className="text-gray-400"><Cpu size={18} /></button>
+        </div>
+    );
+  }
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const assetString = e.dataTransfer.getData('application/game-asset');
-    if (!assetString) return;
+  if (isSelectingAsset && selectedObject) {
+    const isImage = selectingAssetType === 'image';
+    const imageAssets = projectData.assets?.filter(a => a.type === 'image') || [];
+    const videoAssets = projectData.assets?.filter(a => a.type === 'video') || [];
+    const currentAssets = isImage ? imageAssets : videoAssets;
 
-    try {
-      const asset: GameAsset = JSON.parse(assetString);
-      if (asset.type === 'image') {
-        handleUpdate({ imageUrl: asset.url, color: 'transparent', videoUrl: undefined });
-      } else if (asset.type === 'video') {
-        handleUpdate({ videoUrl: asset.url, color: 'transparent', imageUrl: undefined, videoLoop: true, videoAutoplay: true });
-      }
-    } catch (error) {
-      console.error("Failed to parse dropped asset for appearance:", error);
-    }
-  };
+    return (
+      <div className="flex flex-col h-full bg-[#202020] select-none border-l border-[#333333]">
+        {/* Header */}
+        <div className="h-10 px-3 flex items-center gap-2 border-b border-[#333333] bg-[#1a1a1a]">
+          <button 
+            onClick={() => setIsSelectingAsset(false)}
+            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition-colors"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <span className="text-[11px] font-bold uppercase tracking-widest text-gray-300">
+            {isImage ? 'Seleccionar Sprite' : 'Seleccionar Video'}
+          </span>
+        </div>
 
-    const handleAppearanceFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file || !selectedObject) return;
+        <div className="flex-grow p-4 overflow-y-auto custom-scrollbar space-y-4">
+          {/* Subir archivo local */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+              {isImage ? 'Subir imagen desde dispositivo' : 'Subir video desde dispositivo'}
+            </label>
+            <label className="flex flex-col items-center justify-center border-2 border-dashed border-[#333333] hover:border-indigo-500 rounded-lg p-5 cursor-pointer bg-[#181818] text-gray-400 hover:text-white transition-all text-center">
+              {isImage ? <Upload size={20} className="text-indigo-400 mb-1.5" /> : <Video size={20} className="text-indigo-400 mb-1.5" />}
+              <span className="text-[11px] font-bold">{isImage ? 'Subir archivo de imagen' : 'Subir archivo de video'}</span>
+              <span className="text-[9px] text-gray-500 mt-1">{isImage ? 'Soporta PNG, JPG, GIF y SVG' : 'Soporta MP4, WebM y Ogg (con audio)'}</span>
+              <input 
+                type="file" 
+                accept={isImage ? "image/*" : "video/*"}
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (fileEvent) => {
+                    const url = fileEvent.target?.result as string;
+                    if (url && onAddAsset) {
+                      const newAsset: GameAsset = {
+                        id: `asset_${Date.now()}`,
+                        name: file.name,
+                        type: isImage ? 'image' : 'video',
+                        url: url
+                      };
+                      onAddAsset(newAsset);
+                      if (isImage) {
+                        handleUpdate({ imageUrl: url, videoUrl: undefined, color: 'transparent' });
+                      } else {
+                        handleUpdate({ videoUrl: url, imageUrl: undefined, color: 'transparent', videoLoop: true, videoAutoplay: true, videoMuted: false });
+                      }
+                      setIsSelectingAsset(false);
+                    }
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </label>
+          </div>
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const fileType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : null;
-            if (!fileType) return;
+          {/* Grid de assets preestablecidos del proyecto */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                {isImage ? `Galería de imágenes (${imageAssets.length})` : `Galería de videos (${videoAssets.length})`}
+              </label>
+              {((isImage && selectedObject.imageUrl) || (!isImage && selectedObject.videoUrl)) && (
+                <button 
+                  onClick={() => {
+                    if (isImage) {
+                      handleUpdate({ imageUrl: undefined, color: '#eab308' });
+                    } else {
+                      handleUpdate({ videoUrl: undefined, color: '#eab308' });
+                    }
+                    setIsSelectingAsset(false);
+                  }}
+                  className="text-[10px] text-red-400 hover:text-red-300 font-bold uppercase transition-colors"
+                >
+                  {isImage ? 'Quitar Textura' : 'Quitar Video'}
+                </button>
+              )}
+            </div>
 
-            const newAsset: GameAsset = {
-            id: `asset_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-            name: file.name,
-            type: fileType,
-            url: e.target?.result as string,
-            };
-            onAddAsset(newAsset);
-            
-            if (fileType === 'image') {
-            handleUpdate({ imageUrl: newAsset.url, color: 'transparent', videoUrl: undefined });
-            } else if (fileType === 'video') {
-            handleUpdate({ videoUrl: newAsset.url, color: 'transparent', imageUrl: undefined, videoLoop: true, videoAutoplay: true });
-            }
-        };
-        reader.readAsDataURL(file);
-        event.target.value = '';
-    };
-
-  const handleAddBehavior = (behaviorDef: BehaviorDefinition) => {
-    if (!selectedObject) return;
-    const currentBehaviors = selectedObject.behaviors || [];
-    if (currentBehaviors.some(b => b.name === behaviorDef.name)) {
-        alert(`Object already has the "${behaviorDef.name}" behavior.`);
-        return;
-    }
-    const newBehavior: Behavior = {
-        name: behaviorDef.name,
-        properties: { ...behaviorDef.defaultProperties },
-    };
-    handleUpdate({ behaviors: [...currentBehaviors, newBehavior] });
-    setIsBehaviorModalOpen(false);
-  };
-
-  const handleRemoveBehavior = (behaviorName: string) => {
-    if (!selectedObject) return;
-    const updatedBehaviors = selectedObject.behaviors?.filter(b => b.name !== behaviorName) || [];
-    handleUpdate({ behaviors: updatedBehaviors });
-  };
-
-  const handleUpdateBehaviorProperty = (behaviorName: string, propName: string, value: any) => {
-    if (!selectedObject) return;
-    const updatedBehaviors = selectedObject.behaviors?.map(b => 
-        b.name === behaviorName ? { ...b, properties: { ...b.properties, [propName]: value } } : b
-    ) || [];
-    handleUpdate({ behaviors: updatedBehaviors });
-  };
-
-  const handleUpdateObjectVariables = (newVariables: Variable[]) => {
-    handleUpdate({ variables: newVariables });
-  };
-   const handleUpdateObjectScripts = (newScripts: ObjectScript[]) => {
-    handleUpdate({ scripts: newScripts });
-  };
-  
-  const handleUpdateStats = (newStats: Partial<GameObject['stats']>) => {
-    handleUpdate({ stats: { ...(selectedObject?.stats || {hp:0, maxHp:100, attack:10}), ...newStats } });
-  };
-
-  const handleToggleSolid = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selectedObject) return;
-    const isSolid = e.target.checked;
-    let currentBehaviors = selectedObject.behaviors || [];
-
-    if (isSolid) {
-        if (!currentBehaviors.some(b => b.name === 'Solid')) {
-            const solidBehavior: Behavior = { name: 'Solid', properties: {} };
-            handleUpdate({ behaviors: [...currentBehaviors, solidBehavior] });
-        }
-    } else {
-        handleUpdate({ behaviors: currentBehaviors.filter(b => b.name !== 'Solid') });
-    }
-  };
-
-  const handleToggleTouchable = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!selectedObject) return;
-      handleUpdate({ isTouchable: e.target.checked });
-  };
-
-  const handleToggleCustomCollision = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!selectedObject) return;
-      const useCustom = e.target.checked;
-      let collisionData: CollisionProperties | undefined = selectedObject.collision;
-      if (useCustom && !collisionData) {
-          collisionData = {
-              width: selectedObject.width,
-              height: selectedObject.height,
-              offsetX: 0,
-              offsetY: 0,
-          };
-      }
-      handleUpdate({ useCustomCollision: useCustom, collision: collisionData });
-  };
-
-  const handleUpdateCollisionProp = (prop: keyof CollisionProperties, value: number) => {
-      if (!selectedObject) return;
-      const newCollision = { ...selectedObject.collision!, [prop]: value };
-      handleUpdate({ collision: newCollision });
-  };
-  
-  const handleSelectExistingAsset = (asset: GameAsset) => {
-    handleUpdate({ imageUrl: asset.url, color: 'transparent', videoUrl: undefined });
-    setIsAssetPickerOpen(false);
-  };
-  
-  const PALETTE = ['#000000', '#1D2B53', '#7E2553', '#008751', '#AB5236', '#5F574F', '#C2C3C7', '#FFF1E8', '#FF004D', '#FFA300', '#FFEC27', '#00E436', '#29ADFF', '#83769C', '#FF77A8', '#FFCCAA'];
-
+            {currentAssets.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 border border-dashed border-[#333333] rounded bg-[#181818]/60 text-gray-500">
+                {isImage ? <FileImage size={24} className="opacity-30 mb-2" /> : <Film size={24} className="opacity-30 mb-2" />}
+                <span className="text-[10px] uppercase font-bold tracking-wider">{isImage ? 'No hay imágenes' : 'No hay videos'}</span>
+                <span className="text-[9px] mt-0.5 text-center px-4 leading-relaxed">
+                  {isImage ? 'Sube una imagen local usando la opción de arriba.' : 'Sube un video local usando la opción de arriba.'}
+                </span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {currentAssets.map((asset) => {
+                  const isCurrent = isImage ? selectedObject.imageUrl === asset.url : selectedObject.videoUrl === asset.url;
+                  return (
+                    <button
+                      key={asset.id}
+                      onClick={() => {
+                        if (isImage) {
+                          handleUpdate({ imageUrl: asset.url, videoUrl: undefined, color: 'transparent' });
+                        } else {
+                          handleUpdate({ videoUrl: asset.url, imageUrl: undefined, color: 'transparent', videoLoop: true, videoAutoplay: true, videoMuted: false });
+                        }
+                        setIsSelectingAsset(false);
+                      }}
+                      className={`aspect-square relative rounded border bg-[#151515] p-1 overflow-hidden group flex flex-col items-center justify-center transition-all ${
+                        isCurrent 
+                          ? 'border-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.3)] bg-indigo-950/20' 
+                          : 'border-[#333333] hover:border-gray-500'
+                      }`}
+                      title={asset.name}
+                    >
+                      {isImage ? (
+                        <img src={asset.url} className="max-w-full max-h-full object-contain pointer-events-none" />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center">
+                          <Film size={20} className="text-indigo-400 mb-1 pointer-events-none" />
+                          <span className="text-[8px] text-gray-400 truncate max-w-full px-1 pointer-events-none">{asset.name}</span>
+                        </div>
+                      )}
+                      <div className="absolute inset-x-0 bottom-0 bg-black/80 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity truncate text-center text-[7px] text-gray-300 font-mono">
+                        {asset.name}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <aside className="bg-gray-900 border-l border-gray-800 flex flex-col shrink-0 h-full md:h-full md:w-auto" style={{ width: `${width}px` }}>
-        {selectedObject ? (
-            <>
-                <div className="p-2 border-b border-gray-800 flex justify-between items-center">
-                    <button onClick={onToggleCollapse} title="Colapsar Panel" className="p-2 -ml-2 hover:bg-gray-800 rounded-md hidden md:block">
-                        <CollapseIcon />
-                    </button>
-                    <h2 className="text-lg font-semibold truncate px-2">{selectedObject.name}</h2>
-                    <div className="flex items-center gap-1">
-                        <button onClick={() => onCloneObject(selectedObject.id)} title="Clonar Objeto" className="p-1.5 text-gray-400 hover:text-white hover:bg-indigo-600/50 rounded-md">
-                            <CloneIcon />
-                        </button>
-                        <button onClick={() => onDeleteObject(selectedObject.id)} title="Eliminar Objeto" className="p-1.5 text-gray-400 hover:text-white hover:bg-red-600/50 rounded-md">
-                            <TrashIcon />
-                        </button>
-                    </div>
-                </div>
-                <div className="flex-grow p-4 space-y-4 overflow-y-auto relative">
-                    {isBehaviorModalOpen && <BehaviorModal onClose={() => setIsBehaviorModalOpen(false)} onAddBehavior={handleAddBehavior} />}
-                    {isAssetPickerOpen && (
-                        <AssetPickerModal
-                            assets={assets}
-                            onSelect={handleSelectExistingAsset}
-                            onClose={() => setIsAssetPickerOpen(false)}
-                        />
-                    )}
-                    
-                    <PropertyInput label={t('common.name')} value={selectedObject.name} onChange={(val) => handleUpdate({ name: val as string })} />
-                    
-                    <div className="pt-4 border-t border-gray-800 space-y-2">
-                        <h3 className="font-semibold text-xs uppercase tracking-wider">{t('properties.transformation')}</h3>
-                        <div className="grid grid-cols-2 gap-2">
-                            <PropertyInput label="X" type="number" step={0.1} value={selectedObject.x} onChange={(val) => handleUpdate({ x: val as number })} />
-                            <PropertyInput label="Y" type="number" step={0.1} value={selectedObject.y} onChange={(val) => handleUpdate({ y: val as number })} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <PropertyInput label={t('common.width')} type="number" value={selectedObject.width} onChange={(val) => handleUpdate({ width: val as number })} />
-                            <PropertyInput label={t('common.height')} type="number" value={selectedObject.height} onChange={(val) => handleUpdate({ height: val as number })} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <PropertyInput label={t('properties.scaleX')} type="number" value={selectedObject.scaleX ?? 1} onChange={(val) => handleUpdate({ scaleX: val as number })} />
-                            <PropertyInput label={t('properties.scaleY')} type="number" value={selectedObject.scaleY ?? 1} onChange={(val) => handleUpdate({ scaleY: val as number })} />
-                        </div>
-                        <PropertyInput label={t('properties.rotation')} type="number" value={selectedObject.rotation ?? 0} onChange={(val) => handleUpdate({ rotation: val as number })} />
-                    </div>
+    <div className="flex flex-col h-full bg-[#202020] select-none border-l border-[#333333]">
+      {/* Header */}
+      <div className="h-10 px-3 flex items-center justify-between border-b border-[#333333] bg-[#1a1a1a]">
+        <div className="flex items-center gap-2">
+            <Settings size={14} className="text-gray-500" />
+            <span className="text-[11px] font-bold uppercase tracking-widest text-gray-300">Inspector</span>
+        </div>
+        <button onClick={onToggleCollapse} className="p-1 hover:bg-white/5 rounded text-gray-500 hover:text-white transition-colors">
+            <ChevronRight size={16} />
+        </button>
+      </div>
 
-                    <div className="pt-4 border-t border-gray-800 space-y-2">
-                        <h3 className="font-semibold text-xs uppercase tracking-wider">{t('properties.appearance')}</h3>
-                        <div className="flex items-end gap-2">
-                            <div className="flex-grow">
-                                <label className="text-xs text-gray-400 mb-1 block">{t('properties.solidColor')}</label>
-                                <input 
-                                    type="color" 
-                                    value={selectedObject.color} 
-                                    onChange={(e) => handleUpdate({ color: e.target.value, imageUrl: undefined, videoUrl: undefined })} 
-                                    className="w-full h-8 bg-gray-800 border border-gray-700 rounded-md cursor-pointer" 
-                                />
-                            </div>
-                        </div>
-                         <div className="grid grid-cols-8 gap-1 pt-2">
-                            {PALETTE.map(color => (
-                                <button
-                                    key={color}
-                                    onClick={() => handleUpdate({ color: color, imageUrl: undefined, videoUrl: undefined })}
-                                    className={`w-full h-6 rounded-sm border-2 transition-all ${selectedObject.color === color ? 'border-white scale-110' : 'border-transparent'} hover:border-white/50`}
-                                    style={{ backgroundColor: color }}
-                                    title={color}
-                                />
-                            ))}
-                            <button
-                                onClick={() => handleUpdate({ color: 'transparent', imageUrl: undefined, videoUrl: undefined })}
-                                className={`w-full h-6 col-span-2 rounded-sm border-2 transition-all ${selectedObject.color === 'transparent' ? 'border-white scale-110' : 'border-transparent'} hover:border-white/50 bg-cover`}
-                                style={{backgroundImage: 'linear-gradient(45deg, #4a5568 25%, transparent 25%), linear-gradient(-45deg, #4a5568 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #4a5568 75%), linear-gradient(-45deg, transparent 75%, #4a5568 75%)', backgroundSize: '10px 10px', backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px'}}
-                                title="Transparent"
-                            />
-                        </div>
-                        <div className="text-center text-xs text-gray-500 my-1">O</div>
-                        <div 
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                            className={`relative flex items-center justify-center w-full h-24 bg-gray-800 rounded-md border-2 border-dashed ${isDragOver ? 'border-indigo-500' : 'border-gray-700'}`}
-                        >
-                            {selectedObject.videoUrl ? (
-                                <>
-                                    <video src={selectedObject.videoUrl} muted loop autoPlay playsInline className="max-w-full max-h-full object-contain rounded-sm pointer-events-none" />
-                                    <button onClick={() => handleUpdate({ videoUrl: undefined })} className="absolute top-1 right-1 bg-red-600/80 hover:bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs font-bold">&times;</button>
-                                </>
-                            ) : selectedObject.imageUrl ? (
-                                <>
-                                    <img src={selectedObject.imageUrl} alt="Sprite" className="max-w-full max-h-full object-contain rounded-sm" />
-                                    <button onClick={() => handleUpdate({ imageUrl: undefined })} className="absolute top-1 right-1 bg-red-600/80 hover:bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs font-bold">&times;</button>
-                                </>
-                            ) : (
-                                <span className="text-xs text-gray-500 text-center p-2">Suelta una imagen o vídeo aquí</span>
-                            )}
-                             <button 
-                                onClick={() => setIsAssetPickerOpen(true)}
-                                className="absolute bottom-1 left-1 bg-gray-700 hover:bg-indigo-600 text-white rounded-full p-1.5 transition-colors"
-                                title="Seleccionar recurso existente"
-                            >
-                                <FolderIcon />
-                            </button>
-                            <button 
-                                onClick={() => appearanceFileInputRef.current?.click()}
-                                className="absolute bottom-1 right-1 bg-gray-700 hover:bg-indigo-600 text-white rounded-full p-1.5 transition-colors"
-                                title="Importar y asignar recurso"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                            </button>
-                        </div>
-                        {selectedObject.videoUrl && (
-                            <div className="space-y-2 bg-gray-800/50 p-2 rounded-md">
-                                <label className="flex items-center gap-2 text-sm text-gray-300">
-                                    <input type="checkbox" checked={selectedObject.videoAutoplay ?? true} onChange={(e) => handleUpdate({ videoAutoplay: e.target.checked })} className="form-checkbox bg-gray-700 border-gray-600 text-indigo-500" />
-                                    Autoreproducir
-                                </label>
-                                <label className="flex items-center gap-2 text-sm text-gray-300">
-                                    <input type="checkbox" checked={selectedObject.videoLoop ?? true} onChange={(e) => handleUpdate({ videoLoop: e.target.checked })} className="form-checkbox bg-gray-700 border-gray-600 text-indigo-500" />
-                                    Bucle
-                                </label>
-                            </div>
+      <div className="flex-grow overflow-y-auto custom-scrollbar">
+        {selectedObject ? (
+          <div className="flex flex-col">
+            {/* Base Info */}
+            <div className="p-3 bg-[#1a1a1a] border-b border-[#333333]">
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded bg-[#2a2a2a] flex items-center justify-center border border-[#444444]">
+                        {selectedObject.imageUrl ? (
+                            <img src={selectedObject.imageUrl} className="w-8 h-8 object-contain" />
+                        ) : (
+                            <Box size={24} className="text-indigo-400" />
                         )}
                     </div>
-                    
-                    <div className="pt-4 border-t border-gray-800 space-y-2">
-                        <h3 className="font-semibold text-xs uppercase tracking-wider">{t('properties.physicsAndCollisions')}</h3>
-                        <label className="flex items-center gap-2 text-sm text-gray-300 bg-gray-800/50 p-2 rounded-md cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={selectedObject.behaviors?.some(b => b.name === 'Solid') || false} 
-                                onChange={handleToggleSolid} 
-                                className="form-checkbox bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500" 
-                            />
-                            {t('properties.solid')}
-                        </label>
-                        <p className="text-xs text-gray-500 px-2">{t('properties.solidDescription')}</p>
+                    <div className="flex-grow min-w-0">
+                        <CompactInput 
+                            value={selectedObject.name} 
+                            onChange={(val) => handleUpdate({ name: val as string })} 
+                        />
+                        <span className="text-[9px] font-mono text-gray-500 uppercase mt-1 block tracking-tighter opacity-50">ID: {selectedObject.id}</span>
+                    </div>
+                </div>
+                <div className="flex gap-1">
+                    <button onClick={() => onCloneObject(selectedObject.id)} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-[#2a2a2a] hover:bg-[#333333] rounded text-[10px] font-bold text-gray-400 hover:text-white transition-colors">
+                        <Copy size={12} /> DUPLICAR
+                    </button>
+                    <button onClick={() => onDeleteObject(selectedObject.id)} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-red-900/10 hover:bg-red-900/20 rounded text-[10px] font-bold text-red-500 transition-colors border border-red-900/20">
+                        <Trash2 size={12} /> ELIMINAR
+                    </button>
+                </div>
+            </div>
 
-                        <label className="flex items-center gap-2 text-sm text-gray-300 bg-gray-800/50 p-2 rounded-md cursor-pointer mt-2">
-                            <input 
-                                type="checkbox" 
-                                checked={selectedObject.isTouchable ?? true}
-                                onChange={handleToggleTouchable} 
-                                className="form-checkbox bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500" 
+            {/* Transform */}
+            <SectionHeader 
+                title="Transformar" 
+                icon={<Grid size={14} />} 
+                isOpen={openSections.has('transform')}
+                onToggle={() => toggleSection('transform')}
+            />
+            {openSections.has('transform') && (
+                <div className="bg-[#1a1a1a]/40 pb-1">
+                    <PropertyRow label="Posición">
+                        <div className="flex gap-2 py-1">
+                            <div className="flex items-center gap-1 flex-1">
+                                <span className="text-[10px] text-red-500 font-bold opacity-70">X</span>
+                                <CompactInput type="number" value={selectedObject.x} onChange={val => handleUpdate({ x: val as number })} />
+                            </div>
+                            <div className="flex items-center gap-1 flex-1">
+                                <span className="text-[10px] text-green-500 font-bold opacity-70">Y</span>
+                                <CompactInput type="number" value={selectedObject.y} onChange={val => handleUpdate({ y: val as number })} />
+                            </div>
+                        </div>
+                    </PropertyRow>
+                    <PropertyRow label="Dimensión">
+                        <div className="flex gap-2 py-1">
+                            <div className="flex items-center gap-1 flex-1">
+                                <span className="text-[10px] text-gray-500 font-bold">W</span>
+                                <CompactInput type="number" value={selectedObject.width} onChange={val => handleUpdate({ width: val as number })} />
+                            </div>
+                            <div className="flex items-center gap-1 flex-1">
+                                <span className="text-[10px] text-gray-500 font-bold">H</span>
+                                <CompactInput type="number" value={selectedObject.height} onChange={val => handleUpdate({ height: val as number })} />
+                            </div>
+                        </div>
+                    </PropertyRow>
+                    <PropertyRow label="Escala">
+                        <div className="flex gap-2 py-1">
+                            <div className="flex items-center gap-1 flex-1">
+                                <span className="text-[10px] text-gray-500">X</span>
+                                <CompactInput type="number" value={selectedObject.scaleX ?? 1} onChange={val => handleUpdate({ scaleX: val as number })} />
+                            </div>
+                            <div className="flex items-center gap-1 flex-1">
+                                <span className="text-[10px] text-gray-500">Y</span>
+                                <CompactInput type="number" value={selectedObject.scaleY ?? 1} onChange={val => handleUpdate({ scaleY: val as number })} />
+                            </div>
+                        </div>
+                    </PropertyRow>
+                    <PropertyRow label="Rotación">
+                        <CompactInput type="number" value={selectedObject.rotation || 0} onChange={val => handleUpdate({ rotation: val as number })} />
+                    </PropertyRow>
+                    <PropertyRow label="Z-Index">
+                        <CompactInput type="number" value={selectedObject.zIndex || 0} onChange={val => handleUpdate({ zIndex: val as number })} />
+                    </PropertyRow>
+                    <PropertyRow label="Padre">
+                        <select
+                            value={selectedObject.parentId || ''}
+                            onChange={e => handleUpdate({ parentId: e.target.value ? parseFloat(e.target.value) : null })}
+                            className="w-full bg-[#1a1a1a] border border-transparent hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-1 text-[11px] text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
+                        >
+                            <option value="">(Ninguno)</option>
+                            {(activeScene ? activeScene.gameObjects.filter(o => o.id !== selectedObject.id) : []).map(obj => (
+                                <option key={obj.id} value={obj.id}>{obj.name}</option>
+                            ))}
+                        </select>
+                    </PropertyRow>
+                </div>
+            )}
+
+            {/* Appearance */}
+            <SectionHeader 
+                title="Apariencia" 
+                icon={<ImageIcon size={14} />} 
+                isOpen={openSections.has('appearance')}
+                onToggle={() => toggleSection('appearance')}
+            />
+            {openSections.has('appearance') && (
+                <div className="bg-[#1a1a1a]/40 p-3 space-y-3">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Sprite de Imagen</label>
+                        <div 
+                          onClick={() => {
+                            setSelectingAssetType('image');
+                            setIsSelectingAsset(true);
+                          }}
+                          className="aspect-square w-full bg-[#151515] rounded border border-[#333333] flex flex-col items-center justify-center gap-2 p-4 relative group overflow-hidden shadow-inner cursor-pointer"
+                        >
+                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '10px 10px' }} />
+                            {selectedObject.imageUrl ? (
+                                <img src={selectedObject.imageUrl} className="max-w-full max-h-full object-contain relative z-10" />
+                            ) : (
+                                <>
+                                    <ImageIcon size={24} className="text-gray-700" />
+                                    <span className="text-[9px] text-gray-600 text-center uppercase tracking-widest font-bold">Sin Textura</span>
+                                </>
+                            )}
+                            <div className="absolute inset-0 bg-indigo-600/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20 backdrop-blur-sm">
+                                 <button className="px-3 py-1.5 bg-white text-indigo-600 rounded text-[10px] font-bold uppercase shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform">Cambiar Sprite</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Video del Objeto (Con Audio)</label>
+                        <div 
+                          onClick={() => {
+                            setSelectingAssetType('video');
+                            setIsSelectingAsset(true);
+                          }}
+                          className="aspect-video w-full bg-[#151515] rounded border border-[#333333] flex flex-col items-center justify-center gap-2 p-2 relative group overflow-hidden shadow-inner cursor-pointer"
+                        >
+                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '10px 10px' }} />
+                            {selectedObject.videoUrl ? (
+                                <div className="flex flex-col items-center justify-center relative z-10">
+                                    <Film size={24} className="text-indigo-400 mb-1" />
+                                    <span className="text-[9px] text-gray-300 text-center truncate max-w-xs">{selectedObject.videoUrl.substring(0, 40)}...</span>
+                                    {selectedObject.videoMuted === false ? (
+                                        <span className="text-[8px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded font-mono mt-1">Con Audio</span>
+                                    ) : (
+                                        <span className="text-[8px] bg-gray-500/20 text-gray-400 px-1.5 py-0.5 rounded font-mono mt-1">Silenciado</span>
+                                    )}
+                                </div>
+                            ) : (
+                                <>
+                                    <Film size={24} className="text-gray-700" />
+                                    <span className="text-[9px] text-gray-600 text-center uppercase tracking-widest font-bold">Sin Video</span>
+                                </>
+                            )}
+                            <div className="absolute inset-0 bg-indigo-600/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20 backdrop-blur-sm">
+                                 <button className="px-3 py-1.5 bg-white text-indigo-600 rounded text-[10px] font-bold uppercase shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform">Cambiar Video</button>
+                            </div>
+                        </div>
+                    </div>
+                    <PropertyRow label="Color">
+                        <div className="flex gap-2">
+                             <input 
+                                type="color" 
+                                value={selectedObject.color === 'transparent' ? '#000000' : selectedObject.color} 
+                                onChange={e => handleUpdate({ color: e.target.value, imageUrl: undefined })}
+                                className="w-8 h-5 rounded bg-transparent border border-[#333333] cursor-pointer"
                             />
-                            {t('properties.touchable')}
-                        </label>
-                        <p className="text-xs text-gray-500 px-2">{t('properties.touchableDescription')}</p>
-                        
-                         <div className="pt-2 border-t border-gray-700/50 mt-2 space-y-2">
-                            <label className="flex items-center gap-2 text-sm text-gray-300 bg-gray-800/50 p-2 rounded-md cursor-pointer">
+                            <CompactInput value={selectedObject.color} onChange={v => handleUpdate({ color: v as string })} />
+                        </div>
+                    </PropertyRow>
+                    <PropertyRow label="Visibilidad">
+                        <button 
+                            onClick={() => handleUpdate({ visible: selectedObject.visible !== false })}
+                            className={`flex items-center gap-2 px-2 py-1 rounded text-[11px] transition-colors ${selectedObject.visible !== false ? 'text-indigo-400 bg-indigo-400/10' : 'text-gray-500 bg-gray-500/10'}`}
+                        >
+                            {selectedObject.visible !== false ? <Eye size={12} /> : <EyeOff size={12} />}
+                            {selectedObject.visible !== false ? 'Visible' : 'Oculto'}
+                        </button>
+                    </PropertyRow>
+                    <PropertyRow label="Opacidad">
+                        <input 
+                            type="range" min="0" max="1" step="0.1" 
+                            value={selectedObject.opacity ?? 1} 
+                            onChange={e => handleUpdate({ opacity: parseFloat(e.target.value) })}
+                            className="w-full accent-indigo-500 h-1 bg-[#151515] rounded-full appearance-none mt-2"
+                        />
+                    </PropertyRow>
+                    {selectedObject.videoUrl && (
+                        <div className="mt-3 pt-2 border-t border-[#333333] space-y-2">
+                            <div className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Configuración de Video</div>
+                            <PropertyRow label="Bucle (Loop)">
+                                <button 
+                                    onClick={() => handleUpdate({ videoLoop: selectedObject.videoLoop !== false ? false : true })}
+                                    className={`flex items-center gap-2 px-2 py-1 rounded text-[11px] transition-colors ${selectedObject.videoLoop !== false ? 'text-indigo-400 bg-indigo-400/10' : 'text-gray-500 bg-gray-500/10'}`}
+                                >
+                                    {selectedObject.videoLoop !== false ? 'En bucle' : 'Reproducir una vez'}
+                                </button>
+                            </PropertyRow>
+                            <PropertyRow label="Audio (Sonido)">
+                                <button 
+                                    onClick={() => handleUpdate({ videoMuted: selectedObject.videoMuted === false ? true : false })}
+                                    className={`flex items-center gap-2 px-2 py-1 rounded text-[11px] transition-colors ${selectedObject.videoMuted === false ? 'text-indigo-400 bg-indigo-400/10' : 'text-gray-500 bg-gray-500/10'}`}
+                                >
+                                    {selectedObject.videoMuted === false ? 'Con Audio' : 'Silenciado'}
+                                </button>
+                            </PropertyRow>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* End of Transform */}
+
+            {/* UI Settings */}
+            <SectionHeader 
+                title="Interfaz de Usuario (UI) & Salud" 
+                icon={<Eye size={14} className="text-emerald-400" />} 
+                isOpen={openSections.has('uiSettings')}
+                onToggle={() => toggleSection('uiSettings')}
+            />
+            {openSections.has('uiSettings') && (
+                <div className="bg-[#1a1a1a]/40 p-3 space-y-3">
+                    <PropertyRow label="Fijo en Pantalla (UI)">
+                        <button 
+                            onClick={() => handleUpdate({ isUI: selectedObject.isUI !== true })}
+                            className={`w-full py-1 text-[10px] font-bold rounded m-0.5 border transition-all ${selectedObject.isUI ? 'bg-indigo-600 border-indigo-500 text-white animate-pulse-subtle' : 'bg-[#2a2a2a] border-[#333333] text-gray-500'}`}
+                        >
+                            {selectedObject.isUI ? 'SÍ (FIJO EN PANTALLA)' : 'NO (EN MAPA DE ESCENA)'}
+                        </button>
+                    </PropertyRow>
+
+                    {selectedObject.isUI && (
+                        <>
+                            <PropertyRow label="Es Barra de Salud">
+                                <button 
+                                    onClick={() => handleUpdate({ isHealthBar: selectedObject.isHealthBar !== true })}
+                                    className={`w-full py-1 text-[10px] font-bold rounded m-0.5 border transition-all ${selectedObject.isHealthBar ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-[#2a2a2a] border-[#333333] text-gray-500'}`}
+                                >
+                                    {selectedObject.isHealthBar ? 'SÍ (REPRESENTA HP DEL OBJ)' : 'NO (TEXTO / BOTÓN COMÚN)'}
+                                </button>
+                            </PropertyRow>
+
+                            {selectedObject.isHealthBar && (
+                                <PropertyRow label="Seguir Objeto (HP)">
+                                    <input 
+                                        type="text"
+                                        list="game-objects-datalist"
+                                        value={selectedObject.healthBarTarget || ''}
+                                        onChange={e => handleUpdate({ healthBarTarget: e.target.value })}
+                                        className="w-full bg-[#1a1a1a] border border-transparent hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-1 text-[11px] text-indigo-300 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                                        placeholder="ej. Jugador TopDown"
+                                    />
+                                    <datalist id="game-objects-datalist">
+                                        <option value="Jugador TopDown" />
+                                        <option value="Jugador 2D" />
+                                        {projectData.scenes?.flatMap(s => s.gameObjects || []).map(o => o.name).filter((value, index, self) => self.indexOf(value) === index).map(name => (
+                                            <option key={name} value={name} />
+                                        ))}
+                                    </datalist>
+                                </PropertyRow>
+                            )}
+
+                            <PropertyRow label="Texto UI">
+                                <CompactInput 
+                                    value={selectedObject.text || ''} 
+                                    onChange={v => handleUpdate({ text: v as string })} 
+                                    placeholder="ej. HP / SCORE: {score}"
+                                />
+                            </PropertyRow>
+
+                            <PropertyRow label="Mapear Botón Táctil">
+                                <select 
+                                    value={selectedObject.controlAction || 'none'} 
+                                    onChange={e => handleUpdate({ controlAction: e.target.value as any })}
+                                    className="w-full bg-[#1a1a1a] border border-[#2b2b2b] rounded px-1.5 py-1 text-[10px] text-gray-200 focus:outline-none font-sans"
+                                >
+                                    <option value="none">Ninguno (Sólo de adorno / visual)</option>
+                                    <option value="moveLeft">Mover Izquierda (🎮)</option>
+                                    <option value="moveRight">Mover Derecha (🎮)</option>
+                                    <option value="moveUp">Mover Arriba (RPG 🎮)</option>
+                                    <option value="moveDown">Mover Abajo (RPG 🎮)</option>
+                                    <option value="jump">Saltar / Subir (🎮)</option>
+                                    <option value="run">Correr (Shift 🎮)</option>
+                                    <option value="attack">Atacar (Atajo X/Golpe 🎮)</option>
+                                </select>
+                            </PropertyRow>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {/* Collision */}
+            <SectionHeader 
+                title="Colisión" 
+                icon={<Shield size={14} />} 
+                isOpen={openSections.has('collision')}
+                onToggle={() => toggleSection('collision')}
+            />
+            {openSections.has('collision') && (
+                <div className="bg-[#1a1a1a]/40 pb-1">
+                    <PropertyRow label="Habilitada">
+                        <button 
+                            onClick={() => handleUpdate({ isTouchable: selectedObject.isTouchable !== false ? false : true })}
+                            className={`w-full py-1 text-[10px] font-bold rounded m-0.5 border transition-all ${selectedObject.isTouchable !== false ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#2a2a2a] border-[#333333] text-gray-500'}`}
+                        >
+                            {selectedObject.isTouchable !== false ? 'ACTIVO' : 'INACTIVO'}
+                        </button>
+                    </PropertyRow>
+                    <PropertyRow label="Arrastrable">
+                        <button 
+                            onClick={() => handleUpdate({ isDraggable: selectedObject.isDraggable !== true })}
+                            className={`w-full py-1 text-[10px] font-bold rounded m-0.5 border transition-all ${selectedObject.isDraggable ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#2a2a2a] border-[#333333] text-gray-500'}`}
+                        >
+                            {selectedObject.isDraggable ? 'SÍ (ACTIVO)' : 'NO'}
+                        </button>
+                    </PropertyRow>
+                    {selectedObject.isDraggable && (
+                        <>
+                            <PropertyRow label="Bloqueo Ejes">
+                                <div className="flex gap-2 py-1">
+                                    <button 
+                                        onClick={() => handleUpdate({ dragXLocked: !selectedObject.dragXLocked })}
+                                        className={`flex-1 py-1 text-[9px] font-bold rounded border transition-all ${selectedObject.dragXLocked ? 'bg-red-900/40 border-red-500/30 text-red-300' : 'bg-[#2a2a2a] border-[#333333] text-gray-400'}`}
+                                    >
+                                        BLOQUEAR X
+                                    </button>
+                                    <button 
+                                        onClick={() => handleUpdate({ dragYLocked: !selectedObject.dragYLocked })}
+                                        className={`flex-1 py-1 text-[9px] font-bold rounded border transition-all ${selectedObject.dragYLocked ? 'bg-red-900/40 border-red-500/30 text-red-300' : 'bg-[#2a2a2a] border-[#333333] text-gray-400'}`}
+                                    >
+                                        BLOQUEAR Y
+                                    </button>
+                                </div>
+                            </PropertyRow>
+                            <PropertyRow label="Límites X">
+                                <div className="flex gap-2 py-1">
+                                    <div className="flex items-center gap-1 flex-1">
+                                        <span className="text-[9px] text-gray-500">Mín</span>
+                                        <input 
+                                            type="number" 
+                                            value={selectedObject.dragMinX ?? ''} 
+                                            onChange={e => handleUpdate({ dragMinX: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                                            placeholder="Libre"
+                                            className="w-full bg-[#1a1a1a] border border-transparent hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-0.5 text-[11px] text-gray-200 focus:outline-none transition-all"
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-1">
+                                        <span className="text-[9px] text-gray-500">Máx</span>
+                                        <input 
+                                            type="number" 
+                                            value={selectedObject.dragMaxX ?? ''} 
+                                            onChange={e => handleUpdate({ dragMaxX: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                                            placeholder="Libre"
+                                            className="w-full bg-[#1a1a1a] border border-transparent hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-0.5 text-[11px] text-gray-200 focus:outline-none transition-all"
+                                        />
+                                    </div>
+                                </div>
+                            </PropertyRow>
+                            <PropertyRow label="Límites Y">
+                                <div className="flex gap-2 py-1">
+                                    <div className="flex items-center gap-1 flex-1">
+                                        <span className="text-[9px] text-gray-500">Mín</span>
+                                        <input 
+                                            type="number" 
+                                            value={selectedObject.dragMinY ?? ''} 
+                                            onChange={e => handleUpdate({ dragMinY: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                                            placeholder="Libre"
+                                            className="w-full bg-[#1a1a1a] border border-transparent hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-0.5 text-[11px] text-gray-200 focus:outline-none transition-all"
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-1">
+                                        <span className="text-[9px] text-gray-500">Máx</span>
+                                        <input 
+                                            type="number" 
+                                            value={selectedObject.dragMaxY ?? ''} 
+                                            onChange={e => handleUpdate({ dragMaxY: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                                            placeholder="Libre"
+                                            className="w-full bg-[#1a1a1a] border border-transparent hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-0.5 text-[11px] text-gray-200 focus:outline-none transition-all"
+                                        />
+                                    </div>
+                                </div>
+                            </PropertyRow>
+                        </>
+                    )}
+                    <PropertyRow label="Obstáculo Sólido">
+                        <button 
+                            onClick={() => {
+                                const currentBehaviors = selectedObject.behaviors || [];
+                                const isSolid = currentBehaviors.some(b => b.name === 'Solid');
+                                if (isSolid) {
+                                    handleUpdate({ behaviors: currentBehaviors.filter(b => b.name !== 'Solid') });
+                                } else {
+                                    handleUpdate({ behaviors: [...currentBehaviors, { name: 'Solid', properties: {} }] });
+                                }
+                            }}
+                            className={`w-full py-1 text-[10px] font-bold rounded m-0.5 border transition-all ${selectedObject.behaviors?.some(b => b.name === 'Solid') ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#2a2a2a] border-[#333333] text-gray-500'}`}
+                        >
+                            {selectedObject.behaviors?.some(b => b.name === 'Solid') ? 'SÍ' : 'NO'}
+                        </button>
+                    </PropertyRow>
+                    <PropertyRow label="Caja Personalizada">
+                        <button 
+                            onClick={() => {
+                                const useCustom = !selectedObject.useCustomCollision;
+                                const collisionData = useCustom 
+                                    ? (selectedObject.collision || { width: selectedObject.width, height: selectedObject.height, offsetX: 0, offsetY: 0 })
+                                    : selectedObject.collision;
+                                handleUpdate({ useCustomCollision: useCustom, collision: collisionData });
+                            }}
+                            className={`w-full py-1 text-[10px] font-bold rounded m-0.5 border border-[#333333] transition-all bg-[#2a2a2a] text-gray-300 ${selectedObject.useCustomCollision ? 'text-indigo-400 bg-indigo-400/10 border-indigo-500/20' : ''}`}
+                        >
+                            {selectedObject.useCustomCollision ? "PERSONALIZADA" : "BÁSICA"}
+                        </button>
+                    </PropertyRow>
+                    {selectedObject.useCustomCollision && selectedObject.collision && (
+                        <>
+                            <PropertyRow label="Tamaño Box">
+                                <div className="flex gap-2 py-1">
+                                    <div className="flex items-center gap-1 flex-1">
+                                        <span className="text-[10px] text-gray-500">W</span>
+                                        <CompactInput type="number" value={selectedObject.collision.width} onChange={val => handleUpdate({ collision: { ...selectedObject.collision!, width: val as number } })} />
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-1">
+                                        <span className="text-[10px] text-gray-500">H</span>
+                                        <CompactInput type="number" value={selectedObject.collision.height} onChange={val => handleUpdate({ collision: { ...selectedObject.collision!, height: val as number } })} />
+                                    </div>
+                                </div>
+                            </PropertyRow>
+                            <PropertyRow label="Offset">
+                                <div className="flex gap-2 py-1">
+                                    <div className="flex items-center gap-1 flex-1">
+                                        <span className="text-[10px] text-gray-500">X</span>
+                                        <CompactInput type="number" value={selectedObject.collision.offsetX} onChange={val => handleUpdate({ collision: { ...selectedObject.collision!, offsetX: val as number } })} />
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-1">
+                                        <span className="text-[10px] text-gray-500">Y</span>
+                                        <CompactInput type="number" value={selectedObject.collision.offsetY} onChange={val => handleUpdate({ collision: { ...selectedObject.collision!, offsetY: val as number } })} />
+                                    </div>
+                                </div>
+                            </PropertyRow>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {/* Tilemap Properties */}
+            {selectedObject.behaviors?.some(b => b.name === 'Tilemap') && (
+                <>
+                    <SectionHeader 
+                        title="Configuración Tilemap" 
+                        icon={<Grid size={14} />} 
+                        isOpen={openSections.has('tilemap')}
+                        onToggle={() => toggleSection('tilemap')}
+                    />
+                    {openSections.has('tilemap') && (() => {
+                        const tilemapBehavior = selectedObject.behaviors?.find(b => b.name === 'Tilemap');
+                        if (!tilemapBehavior) return null;
+                        const { tileSize = 32, collisionData = '' } = tilemapBehavior.properties || {};
+                        const rows = String(collisionData).split('\n');
+                        const curRowsCount = rows.length;
+                        const curColsCount = rows[0]?.length || 0;
+
+                        const handleTileSizeChange = (newSize: number) => {
+                            if (newSize < 4) return;
+                            const newBehaviors = selectedObject.behaviors?.map(b => b.name === 'Tilemap' ? {
+                                ...b,
+                                properties: { ...b.properties, tileSize: newSize }
+                            } : b) || [];
+                            handleUpdate({ behaviors: newBehaviors });
+                        };
+
+                        const handleResizeGrid = (newCols: number, newRows: number) => {
+                            if (newCols < 1 || newRows < 1) return;
+                            
+                            const lines = String(collisionData).split('\n');
+                            const grid: string[] = [];
+                            
+                            for (let y = 0; y < newRows; y++) {
+                                let lineStr = lines[y] ?? '';
+                                if (lineStr.length < newCols) {
+                                    lineStr = lineStr.padEnd(newCols, '0');
+                                } else if (lineStr.length > newCols) {
+                                    lineStr = lineStr.substring(0, newCols);
+                                }
+                                grid.push(lineStr);
+                            }
+                            
+                            const newCollisionData = grid.join('\n');
+                            const newBehaviors = selectedObject.behaviors?.map(b => b.name === 'Tilemap' ? {
+                                ...b,
+                                properties: { ...b.properties, collisionData: newCollisionData }
+                            } : b) || [];
+                            
+                            // Also adjust object width/height to match new grid size * tileSize
+                            handleUpdate({ 
+                                behaviors: newBehaviors,
+                                width: newCols * tileSize,
+                                height: newRows * tileSize
+                            });
+                        };
+
+                        return (
+                            <div className="bg-[#1a1a1a]/40 pb-2 space-y-1">
+                                <PropertyRow label="Tamaño Tile">
+                                    <CompactInput 
+                                        type="number" 
+                                        value={tileSize} 
+                                        onChange={val => handleTileSizeChange(val as number)} 
+                                    />
+                                </PropertyRow>
+                                <PropertyRow label="Columnas (Ancho)">
+                                    <CompactInput 
+                                        type="number" 
+                                        value={curColsCount} 
+                                        onChange={val => handleResizeGrid(val as number, curRowsCount)} 
+                                    />
+                                </PropertyRow>
+                                <PropertyRow label="Filas (Alto)">
+                                    <CompactInput 
+                                        type="number" 
+                                        value={curRowsCount} 
+                                        onChange={val => handleResizeGrid(curColsCount, val as number)} 
+                                    />
+                                </PropertyRow>
+                                <div className="px-3 py-2 text-[10px] text-gray-500 italic leading-relaxed">
+                                    💡 ¡Activa el <b>Pincel Tilemap</b> en la barra de herramientas inferior para dibujar bloques con el ratón directamente sobre la rejilla!
+                                </div>
+                            </div>
+                        );
+                    })()}
+                </>
+            )}
+
+            {/* Logic */}
+            <SectionHeader 
+                title="Lógica & Comportamientos" 
+                icon={<Cpu size={14} />} 
+                isOpen={openSections.has('logic')}
+                onToggle={() => toggleSection('logic')}
+                action={
+                    !isAddingBehavior && (
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsAddingBehavior(true);
+                            }}
+                            className="p-1 hover:bg-white/10 rounded text-indigo-400"
+                            title="Añadir Comportamiento"
+                        >
+                            <Plus size={14} />
+                        </button>
+                    )
+                }
+            />
+            {openSections.has('logic') && (
+                <div className="bg-[#1a1a1a]/40 p-3 space-y-3">
+                    {isAddingBehavior ? (
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between border-b border-[#333333] pb-1.5 mb-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Añadir Comportamiento</span>
+                                <button 
+                                    onClick={() => setIsAddingBehavior(false)}
+                                    className="text-[9px] font-bold text-indigo-400 hover:text-white uppercase transition-colors"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+                            
+                            {(() => {
+                                const objectBehaviors = selectedObject.behaviors || [];
+                                const unaddedBehaviors = availableBehaviors.filter(bDef => !objectBehaviors.some(ob => ob.name === bDef.name));
+                                
+                                if (unaddedBehaviors.length === 0) {
+                                    return (
+                                        <div className="text-[10px] text-gray-500 italic text-center py-4 bg-[#151515] rounded border border-dashed border-[#333333]">
+                                            Ya tienes todos los comportamientos posibles activos.
+                                        </div>
+                                    );
+                                }
+                                
+                                return (
+                                    <div className="space-y-1.5 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
+                                        {unaddedBehaviors.map(bDef => {
+                                            const key = getBehaviorKey(bDef.name);
+                                            const labelStr = t(`behavior.${key}`) || bDef.name;
+                                            return (
+                                                <button
+                                                    key={bDef.name}
+                                                    onClick={() => {
+                                                        const newBehaviors = [
+                                                            ...objectBehaviors,
+                                                            { name: bDef.name, properties: { ...bDef.defaultProperties } }
+                                                        ];
+                                                        handleUpdate({ behaviors: newBehaviors });
+                                                        setIsAddingBehavior(false);
+                                                    }}
+                                                    className="w-full text-left p-2.5 bg-[#202020] border border-[#333333] hover:border-indigo-500 rounded flex flex-col hover:bg-indigo-950/20 transition-all cursor-pointer group"
+                                                >
+                                                    <span className="font-bold text-[10px] uppercase tracking-wider text-gray-200 group-hover:text-indigo-400 flex items-center gap-1.5">
+                                                        <Zap size={11} className="text-indigo-400" />
+                                                        {labelStr}
+                                                    </span>
+                                                    <span className="text-[9px] text-gray-500 mt-1 leading-normal font-sans">
+                                                        {bDef.description}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <button 
+                                onClick={() => setIsAddingBehavior(true)}
+                                className="w-full py-2 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded text-[10px] font-bold uppercase hover:bg-indigo-600 hover:text-white transition-all tracking-wider shadow-sm flex items-center justify-center gap-1.5"
+                            >
+                                <Plus size={12} /> Añadir Comportamiento
+                            </button>
+                            
+                            {/* List of active behaviors */}
+                            {(() => {
+                                const objectBehaviors = selectedObject.behaviors || [];
+                                if (objectBehaviors.length === 0) {
+                                    return (
+                                        <div className="flex flex-col items-center justify-center py-6 border border-dashed border-[#333333] rounded bg-[#181818]">
+                                            <Cpu size={20} className="text-gray-700 mb-2" />
+                                            <span className="text-[10px] text-gray-600 font-medium uppercase tracking-widest">Sin Comportamientos</span>
+                                        </div>
+                                    );
+                                }
+                                
+                                return (
+                                    <div className="space-y-2">
+                                        {objectBehaviors.map(behavior => {
+                                            const bKey = getBehaviorKey(behavior.name);
+                                            const bLabel = t(`behavior.${bKey}`) || behavior.name;
+                                            const isExpanded = expandedBehaviors.has(behavior.name);
+                                            const propertiesKeys = Object.keys(behavior.properties || {});
+                                            
+                                            return (
+                                                <div key={behavior.name} className="border border-[#333333] rounded bg-[#1c1c1c]/40 overflow-hidden">
+                                                    <div 
+                                                        onClick={() => toggleBehaviorExpand(behavior.name)}
+                                                        className="flex items-center justify-between p-2 bg-[#202020] hover:bg-[#252525] cursor-pointer transition-colors"
+                                                    >
+                                                        <div className="flex items-center gap-1.5 min-w-0">
+                                                            {isExpanded ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
+                                                            <Zap size={10} className="text-indigo-400 shrink-0" />
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-200 truncate">{bLabel}</span>
+                                                        </div>
+                                                        <button 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const newBehaviors = objectBehaviors.filter(b => b.name !== behavior.name);
+                                                                handleUpdate({ behaviors: newBehaviors });
+                                                            }}
+                                                            className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                                            title="Eliminar comportamiento"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
+                                                    
+                                                    {isExpanded && (
+                                                        <div className="p-2 border-t border-[#1c1c1c] bg-[#141414]/60 space-y-2.5">
+                                                            {propertiesKeys.length === 0 ? (
+                                                                <div className="text-[9px] text-gray-500 italic p-1">No tiene propiedades ajustables.</div>
+                                                            ) : (
+                                                                propertiesKeys.map(propKey => {
+                                                                    const val = behavior.properties[propKey];
+                                                                    const isAnimSelectKey = ['idleAnimId', 'runAnimId', 'jumpAnimId', 'attackAnimId'].includes(propKey);
+                                                                    return (
+                                                                        <PropertyRow key={propKey} label={propKey === 'idleAnimId' ? 'Animación Reposo' : propKey === 'runAnimId' ? 'Animación Correr' : propKey === 'jumpAnimId' ? 'Animación Saltar' : propKey === 'attackAnimId' ? 'Animación Atacar' : propKey}>
+                                                                            {isAnimSelectKey ? (
+                                                                                <select
+                                                                                    value={val ?? ''}
+                                                                                    onChange={(e) => handleUpdateBehaviorProperty(behavior.name, propKey, e.target.value)}
+                                                                                    className="w-full bg-[#161616] border border-[#2a2a2a] hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-1 text-[10px] font-semibold text-gray-200 focus:outline-none"
+                                                                                >
+                                                                                    <option value="">-- Ninguna --</option>
+                                                                                    {(projectData?.animations ?? []).map(a => (
+                                                                                        <option key={a.id} value={a.id}>{a.name}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            ) : typeof val === 'boolean' ? (
+                                                                                <button 
+                                                                                    onClick={() => handleUpdateBehaviorProperty(behavior.name, propKey, !val)}
+                                                                                    className={`w-full py-0.5 text-[10px] font-bold rounded border transition-colors ${val ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#2a2a2a] border-[#333333] text-gray-500'}`}
+                                                                                >
+                                                                                    {val ? 'SÍ' : 'NO'}
+                                                                                </button>
+                                                                            ) : (
+                                                                                <CompactInput 
+                                                                                    type={typeof val === 'number' ? 'number' : 'text'}
+                                                                                    value={val ?? ''}
+                                                                                    onChange={(newVal) => handleUpdateBehaviorProperty(behavior.name, propKey, newVal)}
+                                                                                />
+                                                                            )}
+                                                                        </PropertyRow>
+                                                                    );
+                                                                })
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Object Variables */}
+            <SectionHeader 
+                title={t('properties.objectVariables') || 'Variables del Objeto'} 
+                icon={<Database size={14} />} 
+                isOpen={openSections.has('objectVariables')}
+                onToggle={() => toggleSection('objectVariables')}
+                action={
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const currentVars = selectedObject.variables || [];
+                            const newVar: Variable = {
+                                name: `variable_${currentVars.length + 1}`,
+                                value: 0
+                            };
+                            handleUpdate({ variables: [...currentVars, newVar] });
+                        }}
+                        className="p-1 hover:bg-white/10 rounded text-indigo-400 font-bold"
+                        title={t('properties.addVariable') || 'Añadir Variable'}
+                    >
+                        <Plus size={14} />
+                    </button>
+                }
+            />
+            {openSections.has('objectVariables') && (
+                <div className="bg-[#1a1a1a]/40 p-3 space-y-2">
+                    {(!selectedObject.variables || selectedObject.variables.length === 0) ? (
+                        <div className="text-[10px] text-gray-500 italic text-center py-4 bg-[#151515]/60 rounded border border-dashed border-[#333333]">
+                            {t('properties.noVariables') || 'No hay variables de objeto definidas.'}
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {(selectedObject.variables || []).map((v, index) => {
+                                const handleDelete = () => {
+                                    const nextVars = (selectedObject.variables || []).filter((_, i) => i !== index);
+                                    handleUpdate({ variables: nextVars });
+                                };
+                                const handleNameChange = (newName: string) => {
+                                    const nextVars = (selectedObject.variables || []).map((item, i) => 
+                                        i === index ? { ...item, name: newName } : item
+                                    );
+                                    handleUpdate({ variables: nextVars });
+                                };
+                                const handleValueChange = (newVal: string | number) => {
+                                    const nextVars = (selectedObject.variables || []).map((item, i) => 
+                                        i === index ? { ...item, value: newVal } : item
+                                    );
+                                    handleUpdate({ variables: nextVars });
+                                };
+
+                                return (
+                                    <div key={index} className="flex flex-col gap-1.5 p-2 rounded bg-[#1c1c1c]/40 border border-[#333333]">
+                                        <div className="flex items-center gap-1.5 justify-between">
+                                            <input 
+                                                type="text"
+                                                value={v.name}
+                                                onChange={(e) => handleNameChange(e.target.value)}
+                                                className="bg-[#161616] border border-transparent hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-0.5 text-[10px] font-bold font-mono text-indigo-300 w-2/3 focus:outline-none"
+                                                placeholder={t('properties.variableName') || 'Nombre'}
+                                            />
+                                            <button 
+                                                onClick={handleDelete}
+                                                className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                                title="Eliminar variable"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider pl-1.5 mr-1">Valor</span>
+                                            <div className="flex-grow">
+                                                <CompactInput 
+                                                    type={typeof v.value === 'number' ? 'number' : 'text'}
+                                                    value={typeof v.value === 'boolean' ? String(v.value) : (v.value as string | number ?? '')}
+                                                    onChange={handleValueChange}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    <button 
+                        onClick={() => {
+                            const currentVars = selectedObject.variables || [];
+                            const newVar: Variable = {
+                                name: `variable_${currentVars.length + 1}`,
+                                value: 0
+                            };
+                            handleUpdate({ variables: [...currentVars, newVar] });
+                        }}
+                        className="w-full py-1.5 border border-[#333333] hover:border-indigo-500 rounded text-[10px] uppercase font-bold text-gray-400 hover:text-indigo-400 text-center transition-all bg-[#2a2a2a]/40"
+                    >
+                        + {t('properties.addVariable') || 'Añadir Variable'}
+                    </button>
+                </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col">
+            {/* Scene */}
+            <SectionHeader 
+                title="Propiedades Escena" 
+                icon={<Grid size={14} />} 
+                isOpen={openSections.has('scene')}
+                onToggle={() => toggleSection('scene')}
+            />
+            {openSections.has('scene') && activeScene && (
+                <div className="bg-[#1a1a1a]/40 pb-1">
+                    <PropertyRow label="Nombre">
+                        <CompactInput value={activeScene.name} onChange={val => onUpdateScene({ name: val as string })} />
+                    </PropertyRow>
+                    <PropertyRow label="Color Fondo">
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="color" 
+                                value={activeScene.backgroundColor} 
+                                onChange={e => onUpdateScene({ backgroundColor: e.target.value })}
+                                className="w-8 h-5 rounded border border-[#333333] bg-transparent cursor-pointer"
+                            />
+                            <CompactInput value={activeScene.backgroundColor} onChange={val => onUpdateScene({ backgroundColor: val as string })} />
+                        </div>
+                    </PropertyRow>
+                </div>
+            )}
+
+            {/* 3D Camera Configuration */}
+            <SectionHeader 
+                title="Cámara 3D" 
+                icon={<Settings size={14} className="text-pink-400" />} 
+                isOpen={openSections.has('camera3D')}
+                onToggle={() => toggleSection('camera3D')}
+            />
+            {openSections.has('camera3D') && activeScene && (
+                <div className="bg-[#1a1a1a]/40 p-3 space-y-3">
+                    <PropertyRow label="Modo Cámara">
+                        <select 
+                            value={activeScene.camera3DMode || 'top-down'} 
+                            onChange={e => onUpdateScene({ camera3DMode: e.target.value })}
+                            className="w-full bg-[#1a1a1a] border border-[#2b2b2b] rounded px-1.5 py-1 text-[10px] text-gray-200 focus:outline-none"
+                        >
+                            <option value="top-down">Cenital (Top-Down)</option>
+                            <option value="look-down">Picado (Inclinado)</option>
+                            <option value="front">Frente (Frontal)</option>
+                            <option value="below">Contrapicado (Desde Abajo)</option>
+                            <option value="custom">Manual (OrbitControls)</option>
+                        </select>
+                    </PropertyRow>
+                    <PropertyRow label="Seguir Objeto">
+                        <select 
+                            value={activeScene.camera3DTargetId || ''} 
+                            onChange={e => onUpdateScene({ camera3DTargetId: e.target.value ? parseInt(e.target.value) : undefined })}
+                            className="w-full bg-[#1a1a1a] border border-[#2b2b2b] rounded px-1.5 py-1 text-[10px] text-gray-200 focus:outline-none"
+                        >
+                            <option value="">Ninguno (Estática)</option>
+                            {activeScene.gameObjects.map(obj => (
+                                <option key={obj.id} value={obj.id}>{obj.name}</option>
+                            ))}
+                        </select>
+                    </PropertyRow>
+                    <PropertyRow label="Offset Cámara">
+                        <div className="flex gap-1 py-1">
+                            <div className="flex items-center gap-0.5 flex-1">
+                                <span className="text-[9px] text-red-500 font-bold">X</span>
+                                <CompactInput 
+                                    type="number" 
+                                    value={activeScene.camera3DOffset?.x ?? 0} 
+                                    onChange={val => onUpdateScene({ camera3DOffset: { ...(activeScene.camera3DOffset || { x:0, y:5, z:10 }), x: val as number } })} 
+                                />
+                            </div>
+                            <div className="flex items-center gap-0.5 flex-1">
+                                <span className="text-[9px] text-green-500 font-bold">Y</span>
+                                <CompactInput 
+                                    type="number" 
+                                    value={activeScene.camera3DOffset?.y ?? 5} 
+                                    onChange={val => onUpdateScene({ camera3DOffset: { ...(activeScene.camera3DOffset || { x:0, y:5, z:10 }), y: val as number } })} 
+                                />
+                            </div>
+                            <div className="flex items-center gap-0.5 flex-1">
+                                <span className="text-[9px] text-blue-500 font-bold">Z</span>
+                                <CompactInput 
+                                    type="number" 
+                                    value={activeScene.camera3DOffset?.z ?? 10} 
+                                    onChange={val => onUpdateScene({ camera3DOffset: { ...(activeScene.camera3DOffset || { x:0, y:5, z:10 }), z: val as number } })} 
+                                />
+                            </div>
+                        </div>
+                    </PropertyRow>
+                </div>
+            )}
+
+            {/* Global Settings */}
+            <SectionHeader 
+                title="Configuración Proyecto" 
+                icon={<Settings size={14} />} 
+                isOpen={openSections.has('settings')}
+                onToggle={() => toggleSection('settings')}
+            />
+            {openSections.has('settings') && (
+                <div className="bg-[#1a1a1a]/40 pb-1">
+                    <PropertyRow label="Ancho">
+                        <CompactInput type="number" value={projectData.gameWidth} onChange={val => onUpdateProjectData({ gameWidth: val as number })} />
+                    </PropertyRow>
+                    <PropertyRow label="Alto">
+                        <CompactInput type="number" value={projectData.gameHeight} onChange={val => onUpdateProjectData({ gameHeight: val as number })} />
+                    </PropertyRow>
+                    <PropertyRow label="Resolución">
+                        <select 
+                            className="w-full bg-[#1a1a1a] border border-transparent rounded px-1.5 py-0.5 text-[11px] text-gray-200 focus:outline-none"
+                            onChange={e => {
+                                const [w, h] = e.target.value.split('x').map(Number);
+                                onUpdateProjectData({ gameWidth: w, gameHeight: h });
+                            }}
+                        >
+                            <option value="1280x720">HD (1280x720)</option>
+                            <option value="1920x1080">FHD (1920x1080)</option>
+                            <option value="3840x2160">4K Ultra HD (3840x2160)</option>
+                            <option value="1024x768">XGA (1024x768)</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </PropertyRow>
+                    <PropertyRow label="FPS Juego (10-60)">
+                        <div className="flex items-center gap-2 w-full">
+                            <input 
+                                type="range" 
+                                min="10" 
+                                max="60" 
+                                value={projectData.fps || 60} 
+                                onChange={e => onUpdateProjectData({ fps: Number(e.target.value) })}
+                                className="w-[65%] h-1 bg-stone-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                            />
+                            <span className="text-[10px] text-gray-300 font-mono w-[35%] text-right font-bold">
+                                {projectData.fps || 60} FPS
+                            </span>
+                        </div>
+                    </PropertyRow>
+                    <PropertyRow label="Sprites HD / 4K">
+                        <div className="flex flex-col gap-1.5 pt-0.5">
+                            <div className="flex items-center gap-2">
                                 <input 
                                     type="checkbox" 
-                                    checked={selectedObject.useCustomCollision || false}
-                                    onChange={handleToggleCustomCollision}
-                                    className="form-checkbox bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500" 
+                                    id="hd-rendering-chk"
+                                    checked={projectData.hdRendering !== false} 
+                                    onChange={e => onUpdateProjectData({ hdRendering: e.target.checked })}
+                                    className="w-3.5 h-3.5 rounded border-[#333333] bg-[#1a1a1a] text-indigo-600 focus:ring-indigo-500 accent-indigo-500 cursor-pointer"
                                 />
-                                {t('properties.useCustomCollision')}
-                            </label>
-                            {selectedObject.useCustomCollision && (
-                                <div className="bg-gray-800/50 p-2 rounded-md space-y-2">
-                                     <p className="text-xs text-gray-500 px-2">{t('properties.customCollisionDescription')}</p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <PropertyInput label={t('common.width')} type="number" value={selectedObject.collision?.width ?? selectedObject.width} onChange={v => handleUpdateCollisionProp('width', v as number)} />
-                                        <PropertyInput label={t('common.height')} type="number" value={selectedObject.collision?.height ?? selectedObject.height} onChange={v => handleUpdateCollisionProp('height', v as number)} />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <PropertyInput label={t('properties.offsetX')} type="number" value={selectedObject.collision?.offsetX ?? 0} onChange={v => handleUpdateCollisionProp('offsetX', v as number)} />
-                                        <PropertyInput label={t('properties.offsetY')} type="number" value={selectedObject.collision?.offsetY ?? 0} onChange={v => handleUpdateCollisionProp('offsetY', v as number)} />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col">
-                        <label className="text-xs text-gray-400 mb-1">{t('properties.direction')}</label>
-                        <div className="flex bg-gray-800 rounded-md p-1">
-                            <button
-                                onClick={() => handleUpdate({ direction: 'left' })}
-                                className={`flex-1 py-1 text-sm rounded transition-colors ${selectedObject.direction === 'left' ? 'bg-indigo-600 text-white' : 'hover:bg-gray-700'}`}
-                            >{t('properties.left')}</button>
-                            <button
-                                onClick={() => handleUpdate({ direction: 'right' })}
-                                className={`flex-1 py-1 text-sm rounded transition-colors ${selectedObject.direction !== 'left' ? 'bg-indigo-600 text-white' : 'hover:bg-gray-700'}`}
-                            >{t('properties.right')}</button>
-                        </div>
-                    </div>
-                    <div className="flex items-end gap-2">
-                        <div className="flex-grow">
-                            <PropertyInput label={t('properties.zIndex')} type="number" value={selectedObject.zIndex} onChange={(val) => handleUpdate({ zIndex: val as number })} />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            <button onClick={() => handleUpdate({ zIndex: selectedObject.zIndex + 1 })} className="p-1.5 bg-gray-800 hover:bg-indigo-600 rounded-md" title={t('properties.bringForward')}>
-                                <UpArrowIcon />
-                            </button>
-                            <button onClick={() => handleUpdate({ zIndex: selectedObject.zIndex - 1 })} className="p-1.5 bg-gray-800 hover:bg-indigo-600 rounded-md" title={t('properties.sendBackward')}>
-                                <DownArrowIcon />
-                            </button>
-                        </div>
-                    </div>
-                    
-                     <div className="pt-4 border-t border-gray-800 space-y-2">
-                        <h3 className="font-semibold text-xs uppercase tracking-wider">{t('properties.rpgStats')}</h3>
-                        <div className="grid grid-cols-2 gap-2">
-                            <PropertyInput label="HP" type="number" value={selectedObject.stats?.hp ?? 0} onChange={val => handleUpdateStats({ hp: val as number })} />
-                            <PropertyInput label={t('properties.maxHp')} type="number" value={selectedObject.stats?.maxHp ?? 0} onChange={val => handleUpdateStats({ maxHp: val as number })} />
-                            <PropertyInput label={t('properties.attack')} type="number" value={selectedObject.stats?.attack ?? 0} onChange={val => handleUpdateStats({ attack: val as number })} />
-                        </div>
-                    </div>
-
-
-                    <div className="pt-4 border-t border-gray-800 space-y-2">
-                        <h3 className="font-semibold text-xs uppercase tracking-wider mb-2">{t('properties.visualizationAndUI')}</h3>
-                        <label className="flex items-center gap-2 text-sm text-gray-300 bg-gray-800/50 p-2 rounded-md">
-                            <input type="checkbox" checked={selectedObject.isUI || false} onChange={(e) => handleUpdate({ isUI: e.target.checked })} className="form-checkbox bg-gray-700 border-gray-600 text-indigo-500 focus:ring-indigo-500" />
-                            {t('properties.isUI')}
-                        </label>
-                        {selectedObject.isUI && (
-                            <>
-                            <PropertyInput label={t('properties.textContent')} value={selectedObject.text || ''} onChange={(val) => handleUpdate({ text: val as string })} />
-                             <div className="flex flex-col">
-                                <label className="text-xs text-gray-400 mb-1">{t('properties.buttonAction')}</label>
-                                <select
-                                    value={selectedObject.controlAction || 'none'}
-                                    onChange={(e) => handleUpdate({ controlAction: e.target.value as any })}
-                                    className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm w-full focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                                >
-                                    <option value="none">{t('properties.none')}</option>
-                                    <option value="moveLeft">{t('properties.moveLeft')}</option>
-                                    <option value="moveRight">{t('properties.moveRight')}</option>
-                                    <option value="moveUp">{t('properties.moveUp')}</option>
-                                    <option value="moveDown">{t('properties.moveDown')}</option>
-                                    <option value="jump">{t('properties.jump')}</option>
-                                    <option value="attack">{t('properties.attack')}</option>
-                                </select>
+                                <label htmlFor="hd-rendering-chk" className="text-[10px] text-gray-400 cursor-pointer select-none">Renderizado HD (Suavizado de texturas)</label>
                             </div>
-                            </>
-                        )}
-                    </div>
-
-                    <ObjectVariablesEditor 
-                        variables={selectedObject.variables || []}
-                        onUpdate={handleUpdateObjectVariables}
-                    />
-
-                    <ObjectScriptsEditor 
-                        scripts={selectedObject.scripts || []} 
-                        onUpdate={handleUpdateObjectScripts}
-                        projectData={projectData}
-                    />
-
-
-                    <div className="pt-4 border-t border-gray-800 space-y-2">
-                        <h3 className="font-semibold mb-2">{t('properties.behaviors')}</h3>
-                        {selectedObject.behaviors?.map(behavior => (
-                            <div key={behavior.name} className="bg-gray-800/50 p-2 rounded-md border border-gray-700">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h4 className="text-sm font-bold text-indigo-300">{behavior.name}</h4>
-                                    <button onClick={() => handleRemoveBehavior(behavior.name)} title={t('common.delete')} className="p-1 hover:bg-red-500/50 rounded-full"><TrashIcon /></button>
-                                </div>
-                                <div className="space-y-2">
-                                    {Object.entries(behavior.properties).map(([key, value]) => {
-                                        if (behavior.name === 'Tilemap' && key === 'collisionData') {
-                                            return (
-                                                <div key={key} className="flex flex-col">
-                                                    <label className="text-xs text-gray-400 mb-1">{key}</label>
-                                                    <textarea
-                                                        value={value}
-                                                        onChange={(e) => handleUpdateBehaviorProperty(behavior.name, key, e.target.value)}
-                                                        className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm w-full h-32 font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                                                        placeholder={t('properties.tilemapPlaceholder')}
-                                                    />
-                                                </div>
-                                            )
-                                        }
-                                        return (
-                                            <PropertyInput 
-                                                key={key}
-                                                label={key}
-                                                value={value}
-                                                type={typeof value === 'number' ? 'number' : 'text'}
-                                                onChange={(val) => handleUpdateBehaviorProperty(behavior.name, key, val)}
-                                            />
-                                        )
-                                    })}
-                                </div>
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="checkbox" 
+                                    id="uhd-rendering-chk"
+                                    checked={projectData.fourKRendering === true} 
+                                    onChange={e => onUpdateProjectData({ fourKRendering: e.target.checked })}
+                                    className="w-3.5 h-3.5 rounded border-[#333333] bg-[#1a1a1a] text-indigo-600 focus:ring-indigo-500 accent-indigo-500 cursor-pointer"
+                                />
+                                <label htmlFor="uhd-rendering-chk" className="text-[10px] text-gray-400 cursor-pointer select-none">Habilitar renderizado supremo 4K UHD</label>
                             </div>
-                        ))}
-                        <button 
-                        className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-indigo-600 px-3 py-2 rounded-md transition-colors text-sm"
-                        onClick={() => setIsBehaviorModalOpen(true)}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
-                            {t('properties.addBehavior')}
-                        </button>
-                    </div>
+                        </div>
+                    </PropertyRow>
                 </div>
-            </>
-        ) : (
-             <>
-                <div className="p-2 border-b border-gray-800 flex justify-between items-center">
-                    <button onClick={onToggleCollapse} title={t('common.close')} className="p-2 -ml-2 hover:bg-gray-800 rounded-md hidden md:block">
-                        <CollapseIcon />
+            )}
+
+            {/* Global Variables */}
+            <SectionHeader 
+                title={t('properties.variables') || 'Variables Globales'} 
+                icon={<Database size={14} />} 
+                isOpen={openSections.has('globalVariables')}
+                onToggle={() => toggleSection('globalVariables')}
+                action={
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const currentVars = projectData.globalVariables || [];
+                            const newVar: Variable = {
+                                name: `variable_${currentVars.length + 1}`,
+                                value: 0
+                            };
+                            onUpdateProjectData({ globalVariables: [...currentVars, newVar] });
+                        }}
+                        className="p-1 hover:bg-white/10 rounded text-indigo-400 font-bold"
+                        title={t('properties.addVariable') || 'Añadir Variable'}
+                    >
+                        <Plus size={14} />
                     </button>
-                    <h2 className="text-lg font-semibold">{t('sidebar.properties')}</h2>
-                    <div className="w-8"></div>
-                </div>
-                <div className="flex-grow p-4 overflow-y-auto">
-                    {activeScene ? (
-                        <>
-                           <ScenePropertiesEditor scene={activeScene} onUpdate={(updates) => onUpdateScene(activeScene.id, updates)} assets={assets} />
-                           <GameSettingsEditor projectData={projectData} onUpdate={onUpdateProjectData} />
-                        </>
+                }
+            />
+            {openSections.has('globalVariables') && (
+                <div className="bg-[#1a1a1a]/40 p-3 space-y-2">
+                    {(!projectData.globalVariables || projectData.globalVariables.length === 0) ? (
+                        <div className="text-[10px] text-gray-500 italic text-center py-4 bg-[#151515]/60 rounded border border-dashed border-[#333333]">
+                            {t('properties.noVariables') || 'No hay variables globales definidas.'}
+                        </div>
                     ) : (
-                        <p className="text-sm text-gray-500 text-center">{t('properties.noActiveScene')}</p>
+                        <div className="space-y-2">
+                            {(projectData.globalVariables || []).map((v, index) => {
+                                const handleDelete = () => {
+                                    const nextVars = (projectData.globalVariables || []).filter((_, i) => i !== index);
+                                    onUpdateProjectData({ globalVariables: nextVars });
+                                };
+                                const handleNameChange = (newName: string) => {
+                                    const nextVars = (projectData.globalVariables || []).map((item, i) => 
+                                        i === index ? { ...item, name: newName } : item
+                                    );
+                                    onUpdateProjectData({ globalVariables: nextVars });
+                                };
+                                const handleValueChange = (newVal: string | number) => {
+                                    const nextVars = (projectData.globalVariables || []).map((item, i) => 
+                                        i === index ? { ...item, value: newVal } : item
+                                    );
+                                    onUpdateProjectData({ globalVariables: nextVars });
+                                };
+
+                                return (
+                                    <div key={index} className="flex flex-col gap-1.5 p-2 rounded bg-[#1c1c1c]/40 border border-[#333333]">
+                                        <div className="flex items-center gap-1.5 justify-between">
+                                            <input 
+                                                type="text"
+                                                value={v.name}
+                                                onChange={(e) => handleNameChange(e.target.value)}
+                                                className="bg-[#161616] border border-transparent hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-0.5 text-[10px] font-bold font-mono text-indigo-300 w-2/3 focus:outline-none"
+                                                placeholder={t('properties.variableName') || 'Nombre'}
+                                            />
+                                            <button 
+                                                onClick={handleDelete}
+                                                className="p-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                                title="Eliminar variable"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider pl-1.5 mr-1">Valor</span>
+                                            <div className="flex-grow">
+                                                <CompactInput 
+                                                    type={typeof v.value === 'number' ? 'number' : 'text'}
+                                                    value={typeof v.value === 'boolean' ? String(v.value) : (v.value as string | number ?? '')}
+                                                    onChange={handleValueChange}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     )}
+                    <button 
+                        onClick={() => {
+                            const currentVars = projectData.globalVariables || [];
+                            const newVar: Variable = {
+                                name: `variable_${currentVars.length + 1}`,
+                                value: 0
+                            };
+                            onUpdateProjectData({ globalVariables: [...currentVars, newVar] });
+                        }}
+                        className="w-full py-1.5 border border-[#333333] hover:border-indigo-500 rounded text-[10px] uppercase font-bold text-gray-400 hover:text-indigo-400 text-center transition-all bg-[#2a2a2a]/40"
+                    >
+                        + {t('properties.addVariable') || 'Añadir Variable'}
+                    </button>
                 </div>
-             </>
+            )}
+          </div>
         )}
-        <GlobalVariablesEditor variables={globalVariables} onUpdate={onUpdateGlobalVariables} />
-    </aside>
+      </div>
+
+      {/* Footer */}
+      <div className="h-8 px-3 border-t border-[#333333] flex items-center justify-between bg-[#1a1a1a]">
+         <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
+            <span className="text-[9px] font-mono text-gray-500 uppercase tracking-tighter">GPU VULKAN OK</span>
+         </div>
+         <div className="flex gap-3">
+            <button className="text-gray-600 hover:text-white transition-colors"><Lock size={12} /></button>
+            <button className="text-gray-600 hover:text-white transition-colors"><Save size={12} /></button>
+         </div>
+      </div>
+    </div>
   );
 };
 

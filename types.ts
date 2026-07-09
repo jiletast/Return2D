@@ -17,7 +17,7 @@ export interface Variable {
     value: string | number | boolean;
 }
 
-export type ObjectTrigger = 'OnStart' | 'OnUpdate' | 'OnClick' | 'OnCollisionWith' | 'CompareObjectVariable' | 'Always';
+export type ObjectTrigger = 'OnStart' | 'OnUpdate' | 'OnClick' | 'OnCollisionWith' | 'CompareVariable' | 'CompareObjectVariable' | 'Always';
 
 export interface ObjectScript {
   id: string;
@@ -35,6 +35,11 @@ export interface ObjectScript {
 export interface GameObject {
   id: number;
   name: string;
+  // 3D properties
+  modelUrl?: string; // URL for GLB model
+  rotation3D?: { x: number; y: number; z: number };
+  position3D?: { x: number; y: number; z: number };
+  scale3D?: { x: number; y: number; z: number };
   x: number;
   y: number;
   width: number;
@@ -45,12 +50,19 @@ export interface GameObject {
   videoUrl?: string;
   videoLoop?: boolean;
   videoAutoplay?: boolean;
+  videoMuted?: boolean;
+  rpgAttackEndTime?: number;
+  attackEndTime?: number;
+  rpgKnockbackVx?: number;
+  rpgKnockbackVy?: number;
   behaviors?: Behavior[];
   isUI?: boolean; // Is this a fixed-position UI element?
+  isHealthBar?: boolean; // Is this a Health Bar UI element?
+  healthBarTarget?: string; // Target object name for the health bar
   text?: string; // Text content if it's a UI text object
   variables?: Variable[]; // For object-specific variables
   scripts?: ObjectScript[]; // For object-specific visual scripts
-  controlAction?: 'moveLeft' | 'moveRight' | 'jump' | 'attack' | 'none' | 'moveUp' | 'moveDown';
+  controlAction?: 'moveLeft' | 'moveRight' | 'jump' | 'attack' | 'none' | 'moveUp' | 'moveDown' | 'run';
   parentId?: number | null; // For object hierarchy
   stats?: { // For RPG elements
     hp: number;
@@ -58,13 +70,44 @@ export interface GameObject {
     attack: number;
   };
   direction?: 'left' | 'right';
+  visible?: boolean;
+  opacity?: number;
+  flipY?: boolean;
   rotation?: number; // In degrees
   scaleX?: number;
   scaleY?: number;
   isTouchable?: boolean; // If false, object is ignored by collision event detection. Defaults to true.
+  isDraggable?: boolean;
+  animations?: Animation[];
+  dragXLocked?: boolean;
+  dragYLocked?: boolean;
+  dragMinX?: number;
+  dragMaxX?: number;
+  dragMinY?: number;
+  dragMaxY?: number;
   useCustomCollision?: boolean;
   collision?: CollisionProperties;
 
+  // Boss & Projectile helper properties
+  isProjectile?: boolean;
+  projectileLifetime?: number;
+  bossSpeed?: number;
+  bossJumpForce?: number;
+  bossAttackInterval?: number;
+  bossAttackSpeed?: number;
+  bossFollowPlayer?: boolean;
+  bossProjectileColor?: string;
+  lastX?: number;
+  _lastAttackTime?: number;
+  vx3D?: number;
+  vy3D?: number;
+  vz3D?: number;
+  grounded3D?: boolean;
+  initial3D?: { x: number; y: number; z: number };
+  
+  // TweenPath helper properties
+  tweenPathIndex?: number;
+  tweenPathProgress?: number;
 
   // Properties for game simulation
   vx?: number;
@@ -73,6 +116,7 @@ export interface GameObject {
   patrolStartX?: number; // For Patrol behavior
   isAttacking?: boolean; // For attack behavior state
   pendingMovements?: { direction: string; speed: number }[]; // For MoveObject action
+  isClimbing?: boolean; // For ladder climbing behavior
   oscillation?: {
     axis: 'x' | 'y';
     distance: number;
@@ -93,6 +137,10 @@ export interface GameObject {
   initialY?: number;
   initialScaleX?: number;
   initialScaleY?: number;
+  platformVx?: number;
+  platformVy?: number;
+  textColor?: string;
+  fontSize?: number;
   animOffsetX?: number;
   animOffsetY?: number;
   animRotation?: number;
@@ -117,11 +165,18 @@ export interface GameObject {
   }[];
 }
 
+export interface AssetFolder {
+  id: string;
+  name: string;
+  parentId?: string | null;
+}
+
 export interface GameAsset {
   id: string;
   name:string;
-  type: 'image' | 'audio' | 'video';
+  type: 'image' | 'audio' | 'video' | '3d-model';
   url: string;
+  folderId?: string | null;
 }
 
 export interface AnimationKeyframe {
@@ -144,21 +199,24 @@ export interface Animation {
 
 export interface Condition {
   object: string;
-  trigger: 'OnStart' | 'OnCollisionWith' | 'OnKeyPress' | 'OnAnyKeyPress' | 'CompareVariable' | 'OnObjectClicked' | 'IsIdle' | 'IsRunning' | 'IsJumping' | 'OnAttack' | 'OnVerticalCollision' | 'OnHorizontalCollision' | 'IsOnGround' | 'IsMoving' | 'OnMatchFound' | 'OnPlayerJoined' | 'OnPlayerLeft' | 'OnReceiveNetworkMessage' | 'IsMusicPlaying' | 'CompareStat' | 'CompareObjectVariable' | 'OnJoystickMove' | 'OnJoystickUp' | 'OnJoystickDown' | 'OnJoystickLeft' | 'OnJoystickRight' | 'OnTimerElapsed' | 'EveryXSeconds' | 'Always';
+  trigger: 'OnStart' | 'OnCollisionWith' | 'OnKeyPress' | 'OnAnyKeyPress' | 'CompareVariable' | 'CompareBooleanVariable' | 'CompareObjectBooleanVariable' | 'OnObjectClicked' | 'IsIdle' | 'IsRunning' | 'IsJumping' | 'OnAttack' | 'OnVerticalCollision' | 'OnHorizontalCollision' | 'IsOnGround' | 'IsMoving' | 'OnMatchFound' | 'OnPlayerJoined' | 'OnPlayerLeft' | 'OnReceiveNetworkMessage' | 'IsMusicPlaying' | 'CompareStat' | 'CompareObjectVariable' | 'OnJoystickMove' | 'OnJoystickUp' | 'OnJoystickDown' | 'OnJoystickLeft' | 'OnJoystickRight' | 'OnButtonDown' | 'OnButtonUp' | 'OnTriggerDown' | 'OnTriggerUp' | 'OnConsoleCommand' | 'OnTimerElapsed' | 'EveryXSeconds' | 'Always' | 'OnDialogueEnd' | 'OnHealthDepleted' | 'IsMobile' | 'IsPC' | 'IsClimbing' | 'IsLookingLeft' | 'IsLookingRight';
   target?: string;
   params?: Record<string, any>;
 }
 
 export interface Action {
   object: string; // Can be an object name, 'System', or 'Self' for object scripts
-  action: 'Destroy' | 'AddToVariable' | 'SetVariable' | 'GoToScene' | 'SetUIText' | 'SetObjectPosition' | 'PlaySound' | 'SetBackgroundColor' | 'SetBackgroundMusic' | 'StopBackgroundMusic' | 'PauseBackgroundMusic' | 'ResumeBackgroundMusic' | 'SetBackgroundMusicVolume' | 'PlayAnimation' | 'ModifyStat' | 'ShowDialogue' | 'SetQuestState' | 'CreateMatch' | 'JoinMatch' | 'SendNetworkMessage' | 'SetPlayerName' | 'CreateObject' | 'PlayVideo' | 'PauseVideo' | 'StopVideo' | 'SaveGame' | 'LoadGame' | 'SetCameraZoom' | 'SetObjectVariable' | 'AddToObjectVariable' | 'StartTimer' | 'StopTimer' | 'MoveObject' | 'ForceJump' | 'TriggerAttack' | 'SetParent' | 'RotateObject' | 'ScaleObject' | 'GenerateObjectAt' | 'OscillateObject' | 'OscillateScale' | 'RotateContinuously' | 'SetScale' | 'SetVelocityX' | 'SetVelocityY' | 'SetRotationSpeed' | 'SetScaleSpeedX' | 'SetScaleSpeedY' | 'MoveTo' | 'RotateTo' | 'ScaleTo';
+  action: 'Destroy' | 'AddToVariable' | 'SetVariable' | 'SetBooleanVariable' | 'ToggleBooleanVariable' | 'SetObjectBooleanVariable' | 'ToggleObjectBooleanVariable' | 'GoToScene' | 'SetUIText' | 'SetObjectPosition' | 'TeleportToObject' | 'PlaySound' | 'SetBackgroundColor' | 'SetBackgroundMusic' | 'StopBackgroundMusic' | 'PauseBackgroundMusic' | 'ResumeBackgroundMusic' | 'SetBackgroundMusicVolume' | 'PlayAnimation' | 'ModifyStat' | 'ShowDialogue' | 'SetQuestState' | 'CreateMatch' | 'JoinMatch' | 'SendNetworkMessage' | 'SetPlayerName' | 'CreateObject' | 'PlayVideo' | 'PauseVideo' | 'StopVideo' | 'SaveGame' | 'LoadGame' | 'SetCameraZoom' | 'SetObjectVariable' | 'AddToObjectVariable' | 'StartTimer' | 'StopTimer' | 'MoveObject' | 'ForceJump' | 'TriggerAttack' | 'Attack' | 'SetParent' | 'RotateObject' | 'ScaleObject' | 'GenerateObjectAt' | 'OscillateObject' | 'OscillateScale' | 'RotateContinuously' | 'SetScale' | 'SetVelocityX' | 'SetVelocityY' | 'SetRotationSpeed' | 'SetScaleSpeedX' | 'SetScaleSpeedY' | 'MoveTo' | 'RotateTo' | 'ScaleTo' | 'SetVisible' | 'SetOpacity' | 'SetZIndex' | 'SetFlipX' | 'SetFlipY' | 'SlideTo' | 'SetDraggable' | 'ShowConsole' | 'GainHealth' | 'LoseHealth' | 'Knockback' | 'Shoot' | 'CreatePlayers' | 'DisconnectPlayers' | 'EnableCollision' | 'DisableCollision' | 'Wait';
   params?: Record<string, any>;
+  onCompleteActions?: Action[];
 }
 
 export interface GameEvent {
   id: string;
   conditions: Condition[];
   actions: Action[];
+  dimension?: '2D' | '3D';
+  programmingMode?: 'events' | 'blocks';
 }
 
 export interface Scene {
@@ -176,13 +234,18 @@ export interface Scene {
     width: number;
     height: number;
   };
+  camera3DMode?: string;
+  camera3DTargetId?: number;
+  camera3DOffset?: { x: number; y: number; z: number };
 }
 
 export interface ProjectData {
   scenes: Scene[];
   activeSceneId: string | null;
+  assetFolders?: AssetFolder[];
   assets: GameAsset[];
   animations: Animation[];
+  globalObjects?: GameObject[];
   globalVariables?: Variable[];
   orientation?: 'landscape' | 'portrait';
   responsive?: boolean;
@@ -194,6 +257,9 @@ export interface ProjectData {
     size?: number;
     opacity?: number;
   };
+  fps?: number;
+  hdRendering?: boolean;
+  fourKRendering?: boolean;
 }
 
 export interface Project {
@@ -201,4 +267,5 @@ export interface Project {
   name: string;
   lastModified: number;
   data: ProjectData;
+  icon?: string;
 }

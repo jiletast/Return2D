@@ -1,12 +1,25 @@
-import JSZip from 'jszip';
-import type { ProjectData } from '../types';
-
-export const generateGameHTML = (projectData?: ProjectData | null): string => {
-    if (!projectData) return '';
-
-    // This script is a self-contained game engine, adapted from GameView.tsx
-    // to provide full feature parity with the in-editor preview.
-    const gameEngineScript = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Return 2D Game</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #000; display: flex; justify-content: center; align-items: center; font-family: sans-serif; color: white; }
+        #game-container { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        canvas { display: block; image-rendering: auto; max-width: 100%; max-height: 100%; }
+        #ui-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+        #ui-container button, #ui-container div { pointer-events: auto; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui-container"></div>
+    </div>
+    <script>
+        window.projectData = {"scenes":[{"id":"scene-1","name":"Scene 1","backgroundColor":"#000000","gravityY":1000,"gameObjects":[{"id":1,"name":"obj1","x":0,"y":0,"width":10,"height":10,"behaviors":[{"name":"TopDownRPGMovement","properties":{"speed":10}}]}],"events":[]}],"activeSceneId":"scene-1","assets":[],"animations":[],"globalObjects":[],"globalVariables":[],"hdRendering":true};
+        
         const canvas = document.getElementById('gameCanvas');
         if (!canvas) throw new Error("Canvas not found");
         const ctx = canvas.getContext('2d');
@@ -34,7 +47,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         let currentScene = null;
         let runtimeBackgroundColor = '#111827';
         let interactionRequired = true;
-        let selectedPlayerId = null;
         
         // Project Data
         let allScenes = [];
@@ -55,10 +67,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         let frameTriggerDown = [];
         let frameTriggerUp = [];
         let frameConsoleCommands = [];
-        let framePlayerJoined = false;
-        let framePlayerLeft = false;
-        let frameMatchFound = false;
-        let frameReceiveNetworkMessage = false;
         let timers = new Map();
         let intervals = new Map();
         let joystickState = { active: false, angle: 0, distance: 0 };
@@ -71,31 +79,17 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 
         const getObjectAbsolutePosition = (objectId, objectsById) => {
             let currentId = objectId;
-            let absX = 0;
-            let absY = 0;
-            let currentRotation = 0;
+            let totalX = 0;
+            let totalY = 0;
             let safety = 100;
-            const path = [];
-            
             while(currentId && safety-- > 0) {
                 const obj = objectsById.get(currentId);
                 if (!obj) break;
-                path.unshift(obj);
+                totalX += obj.x;
+                totalY += obj.y;
                 currentId = obj.parentId;
             }
-            
-            for (const obj of path) {
-                // Apply current rotation to this object's position
-                const rad = currentRotation * Math.PI / 180;
-                const rotatedX = obj.x * Math.cos(rad) - obj.y * Math.sin(rad);
-                const rotatedY = obj.x * Math.sin(rad) + obj.y * Math.cos(rad);
-                
-                absX += rotatedX;
-                absY += rotatedY;
-                
-                currentRotation += (obj.rotation || 0) + (obj.animRotation || 0);
-            }
-            return { x: absX, y: absY, rotation: currentRotation };
+            return { x: totalX, y: totalY };
         };
 
         const getCollisionBox = (objWithAbsPos) => {
@@ -174,7 +168,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             });
         };
         
-        const executeActionSingle = (action, self, targetOverride, isContinuous = false, deltaTime = 0, forceRestart = false) => {
+        const executeAction = (action, self, isContinuous = false, deltaTime = 0, forceRestart = false) => {
             let params = action.params;
             if (typeof params === 'string') {
                 try {
@@ -183,9 +177,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             }
 
             let targetObj;
-            if (targetOverride) {
-                targetObj = gameObjects.find(o => o.id === targetOverride.id);
-            } else if ((action.object === 'Self' || (self && action.object === self.name)) && self) {
+            if (action.object === 'Self' && self) {
                 targetObj = gameObjects.find(o => o.id === self.id);
             } else {
                 targetObj = gameObjects.find(o => o.name === action.object) || gameObjects.find(o => o.id === action.object);
@@ -210,62 +202,12 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     if (targetObj) targetObj.flipY = !!params?.flip;
                     break;
                 case 'Destroy':
-                    if (targetObj) {
-                        const idsToDestroy = new Set([targetObj.id]);
-                        let added = true;
-                        while (added) {
-                            added = false;
-                            gameObjects.forEach(o => {
-                                if (o.parentId && idsToDestroy.has(o.parentId) && !idsToDestroy.has(o.id)) {
-                                    idsToDestroy.add(o.id);
-                                    added = true;
-                                }
-                            });
-                        }
-                        gameObjects = gameObjects.filter(o => !idsToDestroy.has(o.id));
-                    }
+                    if (targetObj) gameObjects = gameObjects.filter(o => o.id !== targetObj.id);
                     break;
                 case 'SetVariable':
                     if (params?.variable) {
                         const val = params.value;
                         gameVariables[params.variable] = (val !== '' && !isNaN(Number(val))) ? Number(val) : val;
-                    }
-                    break;
-                case 'SetBooleanVariable':
-                    if (params?.variable) {
-                        gameVariables[params.variable] = !!params.valueBoolean;
-                    }
-                    break;
-                case 'ToggleBooleanVariable':
-                    if (params?.variable) {
-                        gameVariables[params.variable] = !gameVariables[params.variable];
-                    }
-                    break;
-                case 'SetObjectPosition':
-                    if (targetObj && params) {
-                        targetObj.x = Number(params.x) || targetObj.x;
-                        targetObj.y = Number(params.y) || targetObj.y;
-                    }
-                    break;
-                case 'TeleportToObject':
-                    if (targetObj && params?.targetObjectName) {
-                        const targetToTeleport = gameObjects.find(o => o.name === params.targetObjectName);
-                        if (targetToTeleport) {
-                            targetObj.x = targetToTeleport.x;
-                            targetObj.y = targetToTeleport.y;
-                        }
-                    }
-                    break;
-                case 'SetParent':
-                    if (targetObj) {
-                        if (!params?.parentName) {
-                            targetObj.parentId = null;
-                        } else {
-                            const parentObj = gameObjects.find(o => o.name === params.parentName);
-                            if (parentObj) {
-                                targetObj.parentId = parentObj.id;
-                            }
-                        }
                     }
                     break;
                 case 'AddToVariable':
@@ -287,22 +229,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         else targetObj.variables.push({ name: params.variable, value: finalVal });
                     }
                     break;
-                case 'SetObjectBooleanVariable':
-                    if (targetObj && params?.variable) {
-                        if (!targetObj.variables) targetObj.variables = [];
-                        const v = targetObj.variables.find(v => v.name === params.variable);
-                        if (v) v.value = !!params.valueBoolean;
-                        else targetObj.variables.push({ name: params.variable, value: !!params.valueBoolean });
-                    }
-                    break;
-                case 'ToggleObjectBooleanVariable':
-                    if (targetObj && params?.variable) {
-                        if (!targetObj.variables) targetObj.variables = [];
-                        const v = targetObj.variables.find(v => v.name === params.variable);
-                        if (v) v.value = !v.value;
-                        else targetObj.variables.push({ name: params.variable, value: true });
-                    }
-                    break;
                 case 'AddToObjectVariable':
                     if (targetObj && params?.variable) {
                         if (!targetObj.variables) targetObj.variables = [];
@@ -315,38 +241,13 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 case 'GoToScene':
                     if (params?.sceneName) loadSceneByName(params.sceneName);
                     break;
-                case 'CreateMatch':
-                    frameMatchFound = true;
-                    framePlayerJoined = true;
-                    break;
-                case 'JoinMatch':
-                    frameMatchFound = true;
-                    framePlayerJoined = true;
-                    break;
-                case 'SendNetworkMessage':
-                    frameReceiveNetworkMessage = true;
-                    break;
-                case 'SetPlayerName':
-                    if (targetObj) {
-                        targetObj.name = params?.name || params?.value || 'Jugador';
-                    }
-                    break;
                 case 'PlayAnimation':
                     if (targetObj && params?.animationId) {
                         const animId = String(params.animationId);
                         const anim = animations.find(a => a.id === animId);
                         if (anim) {
                             const currentAnim = activeAnimations.get(targetObj.id);
-                            const isOneShotPlaying = currentAnim && currentAnim.animation.loop === false;
-                            let stillPlaying = false;
-                            if (isOneShotPlaying) {
-                                const totalDuration = currentAnim.animation.frames.reduce((sum, f) => sum + f.duration, 0);
-                                const elapsed = performance.now() - currentAnim.startTime;
-                                if (elapsed < totalDuration) {
-                                    stillPlaying = true;
-                                }
-                            }
-                            if (forceRestart || !currentAnim || (currentAnim.animation.id !== anim.id && !stillPlaying)) {
+                            if (forceRestart || !currentAnim || currentAnim.animation.id !== anim.id) {
                                 activeAnimations.set(targetObj.id, { animation: anim, startTime: performance.now() });
                             }
                         }
@@ -540,16 +441,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         if (params?.maxY != null) targetObj.dragMaxY = Number(params.maxY);
                     }
                     break;
-                case 'EnableCollision':
-                    if (targetObj) {
-                        targetObj.isTouchable = true;
-                    }
-                    break;
-                case 'DisableCollision':
-                    if (targetObj) {
-                        targetObj.isTouchable = false;
-                    }
-                    break;
                 case 'ShowConsole':
                     if (typeof showConsole === 'function') showConsole();
                     break;
@@ -591,11 +482,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         const soundAsset = assets.find(a => a.id === params.soundId);
                         if (soundAsset) {
                             const cachedAudio = audioCache.get(soundAsset.url);
-                            if (cachedAudio) {
-                                const clone = cachedAudio.cloneNode();
-                                clone.loop = params.loop === true || params.loop === 'true';
-                                clone.play().catch(() => {});
-                            }
+                            if (cachedAudio) (cachedAudio.cloneNode()).play().catch(() => {});
                         }
                     }
                     break;
@@ -607,7 +494,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                             const cachedAudio = audioCache.get(musicAsset.url);
                             if (cachedAudio) {
                                 backgroundMusicPlayer = cachedAudio.cloneNode();
-                                backgroundMusicPlayer.loop = params.loop !== false && params.loop !== 'false';
+                                backgroundMusicPlayer.loop = true;
                                 backgroundMusicPlayer.play().catch(()=>{});
                                 currentBackgroundMusicId = musicAsset.id;
                             }
@@ -821,20 +708,15 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         );
                         if (mainPlayer) {
                             const rootName = mainPlayer.name.split('_Player')[0];
-                            const existingClones = gameObjects.filter(obj => 
-                                obj.id !== mainPlayer.id && obj.name.startsWith(rootName + '_Player')
+                            gameObjects = gameObjects.filter(obj => 
+                                obj.id === mainPlayer.id || !obj.name.startsWith(rootName + '_Player')
                             );
-                            if (existingClones.length + 1 !== pCount) {
-                                gameObjects = gameObjects.filter(obj => 
-                                    obj.id === mainPlayer.id || !obj.name.startsWith(rootName + '_Player')
-                                );
-                                for (let i = 1; i < pCount; i++) {
-                                    const clone = JSON.parse(JSON.stringify(mainPlayer));
-                                    clone.id = Date.now() + Math.random() + i;
-                                    clone.name = rootName + '_Player' + (i + 1);
-                                    clone.x = mainPlayer.x + i * (mainPlayer.width + 12);
-                                    gameObjects.push(clone);
-                                }
+                            for (let i = 1; i < pCount; i++) {
+                                const clone = JSON.parse(JSON.stringify(mainPlayer));
+                                clone.id = Date.now() + Math.random() + i;
+                                clone.name = rootName + '_Player' + (i + 1);
+                                clone.x = mainPlayer.x + i * (mainPlayer.width + 12);
+                                gameObjects.push(clone);
                             }
                         }
                     }
@@ -849,7 +731,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                             gameObjects = gameObjects.filter(obj => 
                                 obj.id === mainPlayer.id || !obj.name.startsWith(rootName + '_Player')
                             );
-                            framePlayerLeft = true;
                         }
                     }
                     break;
@@ -867,7 +748,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     break;
                 case 'TriggerAttack':
                     if (targetObj) {
-                        frameAttacks.push({ name: targetObj.name, id: targetObj.id });
+                        frameAttacks.push(targetObj.name);
                     }
                     break;
                  case 'SaveGame':
@@ -923,62 +804,10 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             }
         };
 
-        const executeAction = (action, self, isContinuous = false, deltaTime = 0, forceRestart = false, pickedObjects = undefined) => {
-            if (action.object === 'System' || action.object === 'Camera' || action.object === 'Self' || (self && action.object === self.name)) {
-                executeActionSingle(action, self, undefined, isContinuous, deltaTime, forceRestart);
-                return;
-            }
-            
-            let targetInstances = pickedObjects && pickedObjects[action.object] ? pickedObjects[action.object] : undefined;
-            
-            if (!targetInstances || targetInstances.length === 0) {
-                targetInstances = gameObjects.filter(o => o.name === action.object || String(o.id) === action.object);
-            }
-            
-            if (targetInstances.length > 0) {
-                targetInstances.forEach(inst => {
-                    executeActionSingle(action, self, inst, isContinuous, deltaTime, forceRestart);
-                });
-            } else {
-                executeActionSingle(action, self, undefined, isContinuous, deltaTime, forceRestart);
-            }
-        };
-
-        const activeSequences = new Set();
-
-        const executeActionsSequential = async (actionsList, self, isContinuous = false, deltaTime = 0, forceRestart = false, pickedObjects = undefined, sequenceKey = undefined) => {
-            if (!actionsList) return;
-            if (sequenceKey) {
-                if (activeSequences.has(sequenceKey)) {
-                    return;
-                }
-                activeSequences.add(sequenceKey);
-            }
-            try {
-                for (let i = 0; i < actionsList.length; i++) {
-                    const action = actionsList[i];
-                    if (action.action === 'Wait') {
-                        const secs = Number(action.params?.duration !== undefined ? action.params.duration : 1);
-                        if (secs > 0) {
-                            await new Promise(resolve => setTimeout(resolve, secs * 1000));
-                        }
-                    } else {
-                        executeAction(action, self, isContinuous, deltaTime, forceRestart, pickedObjects);
-                    }
-                }
-            } finally {
-                if (sequenceKey) {
-                    activeSequences.delete(sequenceKey);
-                }
-            }
-        };
-
-        const checkCondition = (cond, executingObj, executingObj2) => {
+        const checkCondition = (cond, executingObj) => {
             const { variable, value, stat } = cond.params || {};
             const operator = cond.params?.operator || '==';
-            let obj = executingObj && executingObj.name === cond.object ? executingObj : 
-                      executingObj2 && executingObj2.name === cond.object ? executingObj2 :
-                      gameObjects.find(o => o.name === cond.object);
+            const obj = executingObj || gameObjects.find(o => o.name === cond.object);
             
             // Robust numeric check that safely ignores booleans and trims strings
             const isNumeric = (val) => {
@@ -996,10 +825,10 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         if (cond.trigger === 'OnCollisionWith') return true;
                         return c.type === cond.trigger;
                     });
-                case 'OnObjectClicked': return obj ? frameClicks.some(c => c.id === obj.id) : frameClicks.some(c => c.name === cond.object);
+                case 'OnObjectClicked': return frameClicks.includes(cond.object);
                 case 'OnKeyPress': return cond.params?.key && frameKeyPresses.includes(cond.params.key.toLowerCase());
                 case 'OnAnyKeyPress': return frameKeyPresses.length > 0;
-                case 'OnAttack': return obj ? frameAttacks.some(c => c.id === obj.id) : frameAttacks.some(c => c.name === cond.object);
+                case 'OnAttack': return frameAttacks.includes(cond.object);
                 case 'OnTimerElapsed': return frameTimerEvents.includes(cond.params?.timerName);
                 case 'OnDialogueEnd': return frameDialogueEnd;
                 case 'CompareVariable': {
@@ -1029,20 +858,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         default: return false;
                     }
                 }
-                case 'IsMobile':
-                    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
-                case 'IsPC':
-                    return !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768);
-                case 'CompareBooleanVariable': {
-                    if (!variable) return false;
-                    let currentVarRaw = gameVariables[variable];
-                    if (currentVarRaw === 'false') currentVarRaw = false;
-                    else if (currentVarRaw === 'true') currentVarRaw = true;
-                    else currentVarRaw = !!currentVarRaw;
-                    
-                    const targetBool = !!cond.params?.valueBoolean;
-                    return currentVarRaw === targetBool;
-                }
                 case 'CompareObjectVariable': {
                     if (!obj?.variables || !variable) return false;
                     const objVar = obj.variables.find(v => v.name === variable);
@@ -1069,16 +884,30 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         default: return false;
                     }
                 }
-                case 'CompareObjectBooleanVariable': {
-                    if (!obj?.variables || !variable) return false;
-                    const objVar = obj.variables.find(v => v.name === variable);
-                    let varValue = objVar ? objVar.value : false;
-                    if (varValue === 'false') varValue = false;
-                    else if (varValue === 'true') varValue = true;
-                    else varValue = !!varValue;
-                    
-                    const targetBool = !!cond.params?.valueBoolean;
-                    return varValue === targetBool;
+                case 'CompareStat': {
+                    if (!obj || !cond.params?.stat) return false;
+                    const statName = cond.params?.stat;
+                    const statValue = obj.stats?.[statName] ?? 0;
+                    const compValue = value !== undefined ? String(value).trim() : "";
+
+                    if (isNumeric(statValue) && isNumeric(compValue)) {
+                        const nStat = Number(statValue);
+                        const nComp = Number(compValue);
+                        switch (operator) {
+                            case '==': return nStat === nComp;
+                            case '!=': return nStat !== nComp;
+                            case '>': return nStat > nComp;
+                            case '<': return nStat < nComp;
+                            case '>=': return nStat >= nComp;
+                            case '<=': return nStat <= nComp;
+                            default: return false;
+                        }
+                    }
+                    switch (operator) {
+                        case '==': return String(statValue).trim() === compValue;
+                        case '!=': return String(statValue).trim() !== compValue;
+                        default: return false;
+                    }
                 }
                 case 'CompareStat': {
                     if (!obj || !stat) return false;
@@ -1109,9 +938,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 case 'IsOnGround': return obj && !!obj.grounded; case 'IsMoving': return obj && (obj.vx !== 0 || obj.vy !== 0);
                 case 'IsIdle': return obj && obj.vx === 0 && obj.vy === 0 && !!obj.grounded;
                 case 'IsRunning': return obj && obj.vx !== 0 && !!obj.grounded; case 'IsJumping': return obj && !obj.grounded;
-                case 'IsClimbing': return obj && !!obj.isClimbing;
-                case 'IsLookingLeft': return obj && obj.direction === 'left';
-                case 'IsLookingRight': return obj && obj.direction === 'right';
                 case 'IsMusicPlaying':
                     const isPlaying = backgroundMusicPlayer && !backgroundMusicPlayer.paused;
                     if (!isPlaying) return false;
@@ -1126,10 +952,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 case 'OnTriggerDown': return cond.params?.triggerName ? frameTriggerDown.includes(cond.params.triggerName) : frameTriggerDown.length > 0;
                 case 'OnTriggerUp': return cond.params?.triggerName ? frameTriggerUp.includes(cond.params.triggerName) : frameTriggerUp.length > 0;
                 case 'OnConsoleCommand': return cond.params?.command ? frameConsoleCommands.includes(cond.params.command) : frameConsoleCommands.length > 0;
-                case 'OnMatchFound': return frameMatchFound;
-                case 'OnPlayerJoined': return framePlayerJoined;
-                case 'OnPlayerLeft': return framePlayerLeft;
-                case 'OnReceiveNetworkMessage': return frameReceiveNetworkMessage;
                 case 'OnHealthDepleted': return obj && obj.stats && obj.stats.hp <= 0;
                 default: return false;
             }
@@ -1140,73 +962,9 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
              if (!currentScene) return;
              currentScene.events.forEach(event => {
                 if (event.conditions.some(c => c.trigger === 'OnStart' || c.trigger === 'EveryXSeconds')) return;
-                
-                let pickedObjects = {};
-                let conditionsMet = true;
-
-                for (const cond of event.conditions) {
-                    if (!conditionsMet) break;
-
-                    if (cond.trigger === 'OnCollisionWith' || cond.trigger === 'OnVerticalCollision' || cond.trigger === 'OnHorizontalCollision') {
-                        const objName = cond.object;
-                        const targetName = cond.target;
-
-                        let candidateObj1 = pickedObjects[objName] || gameObjects.filter(o => o.name === objName);
-                        let candidateObj2 = pickedObjects[targetName] || gameObjects.filter(o => o.name === targetName);
-
-                        const matches = frameCollisions.filter(c => {
-                            const pairMatch = ((c.obj1Name === objName && c.obj2Name === targetName) || (c.obj2Name === objName && c.obj1Name === targetName));
-                            if (!pairMatch) return false;
-                            if (cond.trigger !== 'OnCollisionWith' && c.type !== cond.trigger) return false;
-                            
-                            const isMatch1 = candidateObj1.some(o => o.id === c.obj1Id || o.id === c.obj2Id);
-                            const isMatch2 = candidateObj2.some(o => o.id === c.obj1Id || o.id === c.obj2Id);
-                            return isMatch1 && isMatch2;
-                        });
-
-                        if (matches.length === 0) {
-                            conditionsMet = false;
-                            break;
-                        }
-
-                        const validObj1 = [];
-                        const validObj2 = [];
-
-                        matches.forEach(m => {
-                            const o1 = candidateObj1.find(o => o.id === m.obj1Id || o.id === m.obj2Id);
-                            const o2 = candidateObj2.find(o => o.id === m.obj1Id || o.id === m.obj2Id);
-                            if (o1 && !validObj1.includes(o1)) validObj1.push(o1);
-                            if (o2 && !validObj2.includes(o2)) validObj2.push(o2);
-                        });
-
-                        pickedObjects[objName] = validObj1;
-                        pickedObjects[targetName] = validObj2;
-
-                    } else if (['OnObjectClicked', 'OnHealthDepleted', 'IsIdle', 'IsRunning', 'IsJumping', 'IsOnGround', 'IsMoving', 'CompareObjectVariable', 'CompareStat', 'CompareObjectBooleanVariable', 'OnAttack'].includes(cond.trigger)) {
-                        
-                        const objectName = cond.object;
-                        const instancesToCheck = pickedObjects[objectName] || gameObjects.filter(o => o.name === objectName);
-                        
-                        const validInstances = instancesToCheck.filter(inst => checkCondition(cond, inst, null));
-
-                        if (validInstances.length === 0) {
-                            conditionsMet = false;
-                            break;
-                        }
-
-                        pickedObjects[objectName] = validInstances;
-
-                    } else {
-                        if (!checkCondition(cond, null, null)) {
-                            conditionsMet = false;
-                            break;
-                        }
-                    }
-                }
-
-                if (conditionsMet) {
-                    const isEventTrigger = event.conditions.some(c => ['OnClick', 'OnKeyPress', 'OnAttack', 'OnTimerElapsed', 'OnDialogueEnd'].includes(c.trigger));
-                    executeActionsSequential(event.actions, null, !isEventTrigger, deltaTime, false, pickedObjects, \`event-\${event.id}\`);
+                if (event.conditions.every(checkCondition)) {
+                    const isEventTrigger = event.conditions.some(c => ['OnClick', 'OnCollisionWith', 'OnKeyPress', 'OnAttack', 'OnTimerElapsed', 'OnDialogueEnd'].includes(c.trigger));
+                    event.actions.forEach(a => executeAction(a, null, !isEventTrigger, deltaTime));
                 }
              });
         };
@@ -1298,15 +1056,15 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             currentScene.events.forEach((event, eventIndex) => {
                 event.conditions.forEach((cond, condIndex) => {
                     if (cond.trigger === 'EveryXSeconds' && cond.params?.interval) {
-                        const key = \`evt-\${event.id || eventIndex}-cond-\${condIndex}\`;
+                        const key = `evt-${event.id || eventIndex}-cond-${condIndex}`;
                         const intervalData = intervals.get(key);
                         const intervalMs = Number(cond.params.interval) * 1000;
                         if (!intervalData) {
                             intervals.set(key, { interval: intervalMs, lastTriggerTime: now });
                         } else if (now >= intervalData.lastTriggerTime + intervalData.interval) {
-                            const otherConditionsMet = event.conditions.filter(c => c !== cond).every(c => checkCondition(c, null, null));
+                            const otherConditionsMet = event.conditions.filter(c => c !== cond).every(checkCondition);
                             if (otherConditionsMet) {
-                                executeActionsSequential(event.actions, null, false, 0, false, undefined, \`event-\${event.id}\`);
+                                event.actions.forEach(action => executeAction(action));
                             }
                             intervalData.lastTriggerTime = now;
                         }
@@ -1326,7 +1084,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 const tilemapBehavior = obj.behaviors?.find(b => b.name === 'Tilemap');
                 if (tilemapBehavior) {
                     const { tileSize = 32, collisionData = '' } = tilemapBehavior.properties || {};
-                    const rows = String(collisionData).split('\\n');
+                    const rows = String(collisionData).split('\n');
                     rows.forEach((row, y) => {
                         for (let x = 0; x < row.length; x++) {
                             if (row[x] !== ' ' && row[x] !== '0') {
@@ -1409,13 +1167,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             actionsPressed.attackAction = actionsPressed.attack;
             actionsPressed.runAction = actionsPressed.run;
 
-            const controllablePlayers = gameObjects.filter(obj => 
-                !obj.isUI && obj.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement')
-            );
-            const currentControlledId = selectedPlayerId !== null && controllablePlayers.some(p => p.id === selectedPlayerId)
-                ? selectedPlayerId
-                : controllablePlayers[0]?.id;
-
             gameObjects.forEach(obj => {
                 if (obj.isProjectile) {
                     obj.x += (obj.vx || 0) * deltaTime;
@@ -1450,9 +1201,8 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 
                 // Process scripts for all objects, including UI
                 obj.scripts?.forEach(s => {
-                    const sId = s.id || s.trigger;
                     if (s.trigger === 'OnUpdate' || s.trigger === 'Always') {
-                        executeActionsSequential(s.actions, obj, false, 0, false, undefined, \`obj-\${obj.id}-script-\${sId}\`);
+                        s.actions.forEach(a => executeAction(a, obj, false));
                     } else if (!['OnStart', 'OnClick', 'OnCollisionWith', 'OnTimerElapsed'].includes(s.trigger)) {
                         const mockCondition = {
                             trigger: s.trigger,
@@ -1461,7 +1211,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                             target: s.params?.targetObjectName
                         };
                         if (checkCondition(mockCondition, obj)) {
-                            executeActionsSequential(s.actions, obj, false, 0, false, undefined, \`obj-\${obj.id}-script-\${sId}\`);
+                            s.actions.forEach(a => executeAction(a, obj, false));
                         }
                     }
                 });
@@ -1479,38 +1229,27 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 // New Behaviors Implementation
                 const patrolBehavior = obj.behaviors?.find(b => b.name === 'Patrol');
                 if (patrolBehavior) {
-                    const { speed = 50, range = 100, sticky = true } = patrolBehavior.properties;
+                    const { speed = 50, range = 100 } = patrolBehavior.properties;
                     if (obj.initialX === undefined) obj.initialX = obj.x;
                     const time = performance.now() / 1000;
                     const t = (time * speed) / range;
                     const cycle = t % 2;
                     const offset = cycle < 1 ? cycle * range : (2 - cycle) * range;
-                    const lastX = obj.x;
                     obj.x = obj.initialX + offset - range / 2;
                     obj.direction = cycle < 1 ? 'right' : 'left';
-                    if (sticky && deltaTime > 0) {
-                        obj.platformVx = (obj.x - lastX) / deltaTime;
-                        obj.platformVy = 0;
-                    }
                 }
 
                 const oscillateBehavior = obj.behaviors?.find(b => b.name === 'Oscillate');
                 if (oscillateBehavior) {
-                    const { axis = 'x', distance = 100, speed = 2, sticky = true } = oscillateBehavior.properties;
+                    const { axis = 'x', distance = 100, speed = 2 } = oscillateBehavior.properties;
                     if (obj.initialX === undefined) obj.initialX = obj.x;
                     if (obj.initialY === undefined) obj.initialY = obj.y;
                     const time = performance.now() / 1000;
                     const offset = Math.sin(time * speed) * distance;
-                    const lastX = obj.x;
-                    const lastY = obj.y;
                     if (axis === 'x') {
                         obj.x = obj.initialX + offset;
                     } else {
                         obj.y = obj.initialY + offset;
-                    }
-                    if (sticky && deltaTime > 0) {
-                        obj.platformVx = (obj.x - lastX) / deltaTime;
-                        obj.platformVy = (obj.y - lastY) / deltaTime;
                     }
                 }
 
@@ -1530,13 +1269,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     const offset = Math.sin(time * speed) * distance;
                     obj.scaleX = obj.initialScaleX + offset;
                     obj.scaleY = obj.initialScaleY + offset;
-                }
-
-                const scoreCounterBehavior = obj.behaviors?.find(b => b.name === 'ScoreCounter');
-                if (scoreCounterBehavior) {
-                    const { variableName = 'score', format = 'Score: {value}' } = scoreCounterBehavior.properties;
-                    const value = gameVariables[variableName] ?? 0;
-                    obj.text = String(format).replace('{value}', String(value));
                 }
 
                 const bossBehavior = obj.behaviors?.find(b => b.name === 'Boss');
@@ -1655,69 +1387,24 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     return;
                 }
 
-                const isCurrentControlled = obj.id === currentControlledId;
-
                 const platformer = obj.behaviors?.find(b => b.name === 'PlatformerCharacter');
-                if (platformer && isCurrentControlled) {
+                if (platformer) {
                     let { speed, jumpForce } = platformer.properties;
                     if (actionsPressed.run) {
                         speed *= 2;
                     }
                     
-                    // Check ladder and climber behavior
-                    const climber = obj.behaviors?.find(b => b.name === 'LadderClimber');
-                    const ladders = gameObjects.filter(o => o.behaviors?.some(b => b.name === 'Ladder'));
-                    const isOverlappingLadder = ladders.some(ladder => {
-                        const box1 = getCollisionBox({...obj, ...getObjectAbsolutePosition(obj.id, objectsById)});
-                        const box2 = getCollisionBox({...ladder, ...getObjectAbsolutePosition(ladder.id, objectsById)});
-                        return box1.x < box2.x + box2.width &&
-                               box1.x + box1.width > box2.x &&
-                               box1.y < box2.y + box2.height &&
-                               box1.y + box1.height > box2.y;
-                    });
-
-                    if (!isOverlappingLadder) {
-                        obj.isClimbing = false;
-                    } else if (climber) {
-                        const climbUpInput = actionsPressed.moveUp || (actionsPressed.moveVerticalIntensity && actionsPressed.moveVerticalIntensity < -0.3);
-                        const climbDownInput = actionsPressed.moveDown || (actionsPressed.moveVerticalIntensity && actionsPressed.moveVerticalIntensity > 0.3);
-                        if (climbUpInput || climbDownInput) {
-                            obj.isClimbing = true;
-                        }
-                    }
-
-                    if (obj.isClimbing && climber) {
-                        const climbSpeed = climber.properties?.speed ?? 100;
-                        obj.vx = (actionsPressed.moveHorizontalIntensity || 0) * speed;
-                        if ((obj.vx || 0) > 0) obj.direction = 'right';
-                        if ((obj.vx || 0) < 0) obj.direction = 'left';
-
-                        const climbUpInput = actionsPressed.moveUp || (actionsPressed.moveVerticalIntensity && actionsPressed.moveVerticalIntensity < -0.3);
-                        const climbDownInput = actionsPressed.moveDown || (actionsPressed.moveVerticalIntensity && actionsPressed.moveVerticalIntensity > 0.3);
-                        if (climbUpInput) {
-                            obj.vy = -climbSpeed;
-                        } else if (climbDownInput) {
-                            obj.vy = climbSpeed;
-                        } else {
-                            obj.vy = 0; // Hanger
-                        }
-
-                        if (actionsPressed.jumpAction) {
-                            obj.isClimbing = false;
-                            obj.vy = -jumpForce;
-                        }
-                    } else {
-                        obj.vx = (actionsPressed.moveHorizontalIntensity || 0) * speed;
-                        if ((obj.vx || 0) > 0) obj.direction = 'right';
-                        if ((obj.vx || 0) < 0) obj.direction = 'left';
-
-                        if (actionsPressed.jumpAction && obj.grounded) {
-                            obj.vy = -jumpForce;
-                            obj.grounded = false;
-                        }
+                    obj.vx = (actionsPressed.moveHorizontalIntensity || 0) * speed;
+                    
+                    if ((obj.vx || 0) > 0) obj.direction = 'right';
+                    if ((obj.vx || 0) < 0) obj.direction = 'left';
+                    
+                    if (actionsPressed.jumpAction && obj.grounded) {
+                        obj.vy = -jumpForce;
+                        obj.grounded = false;
                     }
                     if (actionsPressed.attackAction) {
-                        frameAttacks.push({ name: obj.name, id: obj.id });
+                        frameAttacks.push(obj.name);
                     }
                 }
                 const rpgMovement = obj.behaviors?.find(b => b.name === 'TopDownRPGMovement');
@@ -1727,33 +1414,28 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         speed *= 2;
                     }
                     
-                    if (isCurrentControlled) {
-                        if (joystickState.active) {
-                            const maxDistance = joystickSize / 2;
-                            const intensity = joystickState.distance / maxDistance;
-                            const angleRad = joystickState.angle * Math.PI / 180;
-                            obj.vx = speed * intensity * Math.cos(angleRad);
-                            obj.vy = speed * intensity * Math.sin(angleRad);
-                            if (Math.abs(joystickState.angle) > 90) {
-                                obj.direction = 'left';
-                            } else {
-                                obj.direction = 'right';
-                            }
+                    if (joystickState.active) {
+                        const maxDistance = joystickSize / 2;
+                        const intensity = joystickState.distance / maxDistance;
+                        const angleRad = joystickState.angle * Math.PI / 180;
+                        obj.vx = speed * intensity * Math.cos(angleRad);
+                        obj.vy = speed * intensity * Math.sin(angleRad);
+                        if (Math.abs(joystickState.angle) > 90) {
+                            obj.direction = 'left';
                         } else {
-                            obj.vx = 0; obj.vy = 0;
-                            if (actionsPressed.moveLeft) { obj.vx = -speed; obj.direction = 'left'; }
-                            if (actionsPressed.moveRight) { obj.vx = speed; obj.direction = 'right'; }
-                            if (actionsPressed.moveUp) obj.vy = -speed;
-                            if (actionsPressed.moveDown) obj.vy = speed;
-                            
-                            if (obj.vx !== 0 && obj.vy !== 0) {
-                                obj.vx /= Math.sqrt(2);
-                                obj.vy /= Math.sqrt(2);
-                            }
+                            obj.direction = 'right';
                         }
                     } else {
-                        obj.vx = 0;
-                        obj.vy = 0;
+                        obj.vx = 0; obj.vy = 0;
+                        if (actionsPressed.moveLeft) { obj.vx = -speed; obj.direction = 'left'; }
+                        if (actionsPressed.moveRight) { obj.vx = speed; obj.direction = 'right'; }
+                        if (actionsPressed.moveUp) obj.vy = -speed;
+                        if (actionsPressed.moveDown) obj.vy = speed;
+                        
+                        if (obj.vx !== 0 && obj.vy !== 0) {
+                            obj.vx /= Math.sqrt(2);
+                            obj.vy /= Math.sqrt(2);
+                        }
                     }
 
                     // Apply decay impulse knockback!
@@ -1766,330 +1448,194 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         if (Math.abs(obj.rpgKnockbackVy) < 5) obj.rpgKnockbackVy = 0;
                     }
 
-                    // Unified automatic animations for Platformer and RPG characters
-                    const platBehav = obj.behaviors?.find(b => b.name === 'PlatformerCharacter');
-                    const isPlayerControlled = platBehav || rpgMovement;
-
-                    if (isPlayerControlled) {
-                        const activeBehav = rpgMovement || platBehav;
-                        const idleAnimId = activeBehav?.properties?.idleAnimId;
-                        const runAnimId = activeBehav?.properties?.runAnimId;
-                        const jumpAnimId = activeBehav?.properties?.jumpAnimId;
-                        const attackAnimId = activeBehav?.properties?.attackAnimId;
-
-                        const isAttackingNow = actionsPressed.attackAction || frameAttacks.some(a => a.id === obj.id);
-                        const nowTime = performance.now();
-
-                        // 1. Resolve Attack Animation
-                        if (isAttackingNow) {
-                            const matchingAttackAnim = (attackAnimId && animations.find(a => a.id === attackAnimId)) || 
-                                animations.find(a => {
-                                    const nameL = a.name.toLowerCase();
-                                    const objL = obj.name.toLowerCase();
-                                    return nameL.includes(objL) && (nameL.includes('attack') || nameL.includes('atacar') || nameL.includes('golpe'));
-                                }) || animations.find(a => {
-                                    const nameL = a.name.toLowerCase();
-                                    return nameL.includes('attack') || nameL.includes('atacar') || nameL.includes('golpe');
+                    // Detect attacks and play animations
+                    const isAttackingNow = actionsPressed.attackAction || frameAttacks.includes(obj.name);
+                    const nowTime = performance.now();
+                    
+                    if (isAttackingNow) {
+                        const matchingAttackAnim = animations.find(a => {
+                            const nameL = a.name.toLowerCase();
+                            const objL = obj.name.toLowerCase();
+                            return nameL.includes(objL) && (nameL.includes('attack') || nameL.includes('atacar') || nameL.includes('golpe'));
+                        }) || animations.find(a => {
+                            const nameL = a.name.toLowerCase();
+                            return nameL.includes('attack') || nameL.includes('atacar') || nameL.includes('golpe');
+                        });
+                        
+                        let attackDuration = 350;
+                        if (matchingAttackAnim) {
+                            attackDuration = matchingAttackAnim.frames.reduce((sum, f) => sum + f.duration, 0);
+                            if (attackDuration <= 0) attackDuration = 350;
+                        }
+                        
+                        obj.rpgAttackEndTime = nowTime + attackDuration;
+                        
+                        if (matchingAttackAnim) {
+                            const currentAnim = activeAnimations.get(obj.id);
+                            if (!currentAnim || currentAnim.animation.id !== matchingAttackAnim.id) {
+                                const animCopy = JSON.parse(JSON.stringify(matchingAttackAnim));
+                                animCopy.loop = false;
+                                activeAnimations.set(obj.id, {
+                                    animation: animCopy,
+                                    startTime: nowTime,
                                 });
-
-                            let attackDuration = 350;
-                            if (matchingAttackAnim) {
-                                attackDuration = matchingAttackAnim.frames.reduce((sum, f) => sum + f.duration, 0);
-                                if (attackDuration <= 0) attackDuration = 350;
                             }
-
-                            obj.rpgAttackEndTime = nowTime + attackDuration;
-
-                            if (matchingAttackAnim) {
+                        }
+                    }
+                    
+                    const isCurrentlyAttacking = nowTime < (obj.rpgAttackEndTime || 0);
+                    
+                    if (!isCurrentlyAttacking) {
+                        if (obj.vx !== 0 || obj.vy !== 0) {
+                            const matchingWalkAnim = animations.find(a => {
+                                const nameL = a.name.toLowerCase();
+                                const objL = obj.name.toLowerCase();
+                                return nameL.includes(objL) && (nameL.includes('walk') || nameL.includes('run') || nameL.includes('move') || nameL.includes('caminar') || nameL.includes('correr') || nameL.includes('moverse'));
+                            }) || animations.find(a => {
+                                const nameL = a.name.toLowerCase();
+                                return nameL.includes('walk') || nameL.includes('run') || nameL.includes('move') || nameL.includes('caminar') || nameL.includes('correr') || nameL.includes('moverse');
+                            });
+                            
+                            if (matchingWalkAnim) {
                                 const currentAnim = activeAnimations.get(obj.id);
-                                if (!currentAnim || currentAnim.animation.id !== matchingAttackAnim.id) {
-                                    const animCopy = JSON.parse(JSON.stringify(matchingAttackAnim));
-                                    animCopy.loop = false;
+                                if (!currentAnim || currentAnim.animation.id !== matchingWalkAnim.id) {
+                                    const animCopy = JSON.parse(JSON.stringify(matchingWalkAnim));
+                                    animCopy.loop = true;
                                     activeAnimations.set(obj.id, {
                                         animation: animCopy,
                                         startTime: nowTime,
                                     });
                                 }
                             }
-                        }
-
-                        const isCurrentlyAttacking = nowTime < (obj.rpgAttackEndTime || 0);
-
-                        if (!isCurrentlyAttacking) {
-                            // 2. Resolve Jump Animation (Platformer only, when not grounded and not climbing)
-                            const isJumpingState = platBehav && !obj.grounded && !obj.isClimbing;
+                        } else {
+                            const matchingIdleAnim = animations.find(a => {
+                                const nameL = a.name.toLowerCase();
+                                const objL = obj.name.toLowerCase();
+                                return nameL.includes(objL) && (nameL.includes('idle') || nameL.includes('quieto') || nameL.includes('parado') || nameL.includes('stand'));
+                            }) || animations.find(a => {
+                                const nameL = a.name.toLowerCase();
+                                return nameL.includes('idle') || nameL.includes('quieto') || nameL.includes('parado') || nameL.includes('stand');
+                            });
                             
-                            if (isJumpingState) {
-                                const matchingJumpAnim = (jumpAnimId && animations.find(a => a.id === jumpAnimId)) ||
-                                    animations.find(a => {
-                                        const nameL = a.name.toLowerCase();
-                                        const objL = obj.name.toLowerCase();
-                                        return nameL.includes(objL) && (nameL.includes('jump') || nameL.includes('salto') || nameL.includes('saltar') || nameL.includes('caer'));
-                                    }) || animations.find(a => {
-                                        const nameL = a.name.toLowerCase();
-                                        return nameL.includes('jump') || nameL.includes('salto') || nameL.includes('saltar') || nameL.includes('caer');
+                            if (matchingIdleAnim) {
+                                const currentAnim = activeAnimations.get(obj.id);
+                                if (!currentAnim || currentAnim.animation.id !== matchingIdleAnim.id) {
+                                    const animCopy = JSON.parse(JSON.stringify(matchingIdleAnim));
+                                    animCopy.loop = true;
+                                    activeAnimations.set(obj.id, {
+                                        animation: animCopy,
+                                        startTime: nowTime,
                                     });
-
-                                if (matchingJumpAnim) {
-                                    const currentAnim = activeAnimations.get(obj.id);
-                                    if (!currentAnim || currentAnim.animation.id !== matchingJumpAnim.id) {
-                                        const animCopy = JSON.parse(JSON.stringify(matchingJumpAnim));
-                                        animCopy.loop = true;
-                                        activeAnimations.set(obj.id, {
-                                            animation: animCopy,
-                                            startTime: nowTime,
-                                        });
+                                }
+                            } else {
+                                const currentAnim = activeAnimations.get(obj.id);
+                                if (currentAnim && currentAnim.animation.loop) {
+                                    activeAnimations.delete(obj.id);
+                                    const originalObject = currentScene.gameObjects.find(o => o.id === obj.id);
+                                    if (originalObject) {
+                                        obj.imageUrl = originalObject.imageUrl;
+                                        obj.animOffsetX = 0;
+                                        obj.animOffsetY = 0;
+                                        obj.animRotation = 0;
+                                        obj.animScaleX = 1;
+                                        obj.animScaleY = 1;
                                     }
                                 }
-                            }
-                            // 3. Resolve Running / Walking Animation
-                            else if ((obj.vx || 0) !== 0 || (platBehav ? false : (obj.vy || 0) !== 0)) {
-                                const matchingWalkAnim = (runAnimId && animations.find(a => a.id === runAnimId)) ||
-                                    animations.find(a => {
-                                        const nameL = a.name.toLowerCase();
-                                        const objL = obj.name.toLowerCase();
-                                        return nameL.includes(objL) && (nameL.includes('walk') || nameL.includes('run') || nameL.includes('move') || nameL.includes('caminar') || nameL.includes('correr') || nameL.includes('moverse'));
-                                    }) || animations.find(a => {
-                                        const nameL = a.name.toLowerCase();
-                                        return nameL.includes('walk') || nameL.includes('run') || nameL.includes('move') || nameL.includes('caminar') || nameL.includes('correr') || nameL.includes('moverse');
-                                    });
-
-                                if (matchingWalkAnim) {
-                                    const currentAnim = activeAnimations.get(obj.id);
-                                    if (!currentAnim || currentAnim.animation.id !== matchingWalkAnim.id) {
-                                        const animCopy = JSON.parse(JSON.stringify(matchingWalkAnim));
-                                        animCopy.loop = true;
-                                        activeAnimations.set(obj.id, {
-                                            animation: animCopy,
-                                            startTime: nowTime,
-                                        });
-                                    }
-                                }
-                            }
-                            // 4. Resolve Idle Animation
-                            else {
-                                const matchingIdleAnim = (idleAnimId && animations.find(a => a.id === idleAnimId)) ||
-                                    animations.find(a => {
-                                        const nameL = a.name.toLowerCase();
-                                        const objL = obj.name.toLowerCase();
-                                        return nameL.includes(objL) && (nameL.includes('idle') || nameL.includes('quieto') || nameL.includes('parado') || nameL.includes('stand'));
-                                    }) || animations.find(a => {
-                                        const nameL = a.name.toLowerCase();
-                                        return nameL.includes('idle') || nameL.includes('quieto') || nameL.includes('parado') || nameL.includes('stand');
-                                    });
-
-                                if (matchingIdleAnim) {
-                                    const currentAnim = activeAnimations.get(obj.id);
-                                    if (!currentAnim || currentAnim.animation.id !== matchingIdleAnim.id) {
-                                        const animCopy = JSON.parse(JSON.stringify(matchingIdleAnim));
-                                        animCopy.loop = true;
-                                        activeAnimations.set(obj.id, {
-                                            animation: animCopy,
-                                            startTime: nowTime,
-                                        });
-                                    }
-                                } else {
-                                    const currentAnim = activeAnimations.get(obj.id);
-                                    if (currentAnim && currentAnim.animation.loop) {
-                                        activeAnimations.delete(obj.id);
-                                        const originalObject = currentScene.gameObjects.find(o => o.id === obj.id);
-                                        if (originalObject) {
-                                            obj.imageUrl = originalObject.imageUrl;
-                                            obj.animOffsetX = 0;
-                                            obj.animOffsetY = 0;
-                                            obj.animRotation = 0;
-                                            obj.animScaleX = 1;
-                                            obj.animScaleY = 1;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        const currentAnim = activeAnimations.get(obj.id);
-                        if (currentAnim && currentAnim.animation.loop) {
-                            activeAnimations.delete(obj.id);
-                            const originalObject = currentScene.gameObjects.find(o => o.id === obj.id);
-                            if (originalObject) {
-                                obj.imageUrl = originalObject.imageUrl;
-                                obj.animOffsetX = 0;
-                                obj.animOffsetY = 0;
-                                obj.animRotation = 0;
-                                obj.animScaleX = 1;
-                                obj.animScaleY = 1;
                             }
                         }
                     }
                 }
 
                 const physics = obj.behaviors?.find(b => ['Physics', 'PlatformerCharacter', 'Boss'].includes(b.name || ''));
-                if (rpgMovement) {
+                if (physics) {
+                    // Apply gravity and vertical movement first
+                    obj.grounded = false;
+                    const gravity = Number(physics.properties?.gravity !== undefined ? physics.properties.gravity : 500);
+                    obj.vy = (obj.vy || 0) + gravity * deltaTime;
+                    obj.y += (obj.vy || 0) * deltaTime;
+                    
+                    let absPos = getObjectAbsolutePosition(obj.id, objectsById);
+                    let objWithAbsPos = {...obj, ...absPos};
+
+                    // Vertical collision resolution
+                    for (const solidShape of staticCollisionShapes) {
+                        if (obj.id !== solidShape.owner.id && isColliding(getCollisionBox(objWithAbsPos), solidShape)) {
+                            frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnVerticalCollision' });
+                            if (obj.vy > 0) {
+                                obj.y = solidShape.y - getCollisionBox(objWithAbsPos).height - (absPos.y - obj.y);
+                                obj.grounded = true;
+                                obj.vy = 0;
+                            } else if (obj.vy < 0) {
+                                obj.y = solidShape.y + solidShape.height - (absPos.y - obj.y);
+                                obj.vy = 0;
+                            }
+                            break;
+                        }
+                    }
+
+                    // Apply horizontal movement
                     obj.x += (obj.vx || 0) * deltaTime;
-                    let currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                    let objWithAbsPosH = {...obj, ...currentAbsPos};
+                    absPos = getObjectAbsolutePosition(obj.id, objectsById);
+                    objWithAbsPos = {...obj, ...absPos};
+
+                    // Horizontal collision resolution with a slightly shrunk box vertically to avoid floor friction
+                    for (const solidShape of staticCollisionShapes) {
+                        const horizontalBox = getCollisionBox(objWithAbsPos);
+                        const shrinkAmount = 2; // Pixels to shrink from top and bottom
+                        const adjustedBox = {
+                            ...horizontalBox,
+                            y: horizontalBox.y + shrinkAmount,
+                            height: Math.max(1, horizontalBox.height - 2 * shrinkAmount)
+                        };
+
+                        if (obj.id !== solidShape.owner.id && isColliding(adjustedBox, solidShape)) {
+                            frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnHorizontalCollision' });
+                            if ((obj.vx || 0) > 0) {
+                                obj.x = solidShape.x - horizontalBox.width - (absPos.x - obj.x);
+                            } else if ((obj.vx || 0) < 0) {
+                                obj.x = solidShape.x + solidShape.width - (absPos.x - obj.x);
+                            }
+                            obj.vx = 0;
+                            break; 
+                        }
+                    }
+                } else if (rpgMovement) {
+                    obj.x += (obj.vx || 0) * deltaTime;
+                    let absPos = getObjectAbsolutePosition(obj.id, objectsById);
+                    let objWithAbsPosH = {...obj, ...absPos};
                     for (const solidShape of staticCollisionShapes) {
                         if (obj.id !== solidShape.owner.id && isColliding(getCollisionBox(objWithAbsPosH), solidShape)) {
-                             frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnHorizontalCollision', obj1Id: obj.id, obj2Id: solidShape.owner.id });
-                             const horizontalBox = getCollisionBox(objWithAbsPosH);
-                             const objCenterX = horizontalBox.x + horizontalBox.width / 2;
-                             const solidCenterX = solidShape.x + solidShape.width / 2;
-                             
-                             if (objCenterX < solidCenterX) {
-                                 obj.x = solidShape.x - horizontalBox.width - (currentAbsPos.x - obj.x);
-                             } else {
-                                 obj.x = solidShape.x + solidShape.width - (currentAbsPos.x - obj.x);
-                             }
-                             obj.vx = 0;
-                             
-                             currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                             objWithAbsPosH = {...obj, ...currentAbsPos};
+                            frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnHorizontalCollision' });
+                            const horizontalBox = getCollisionBox(objWithAbsPosH);
+                            const objCenterX = horizontalBox.x + horizontalBox.width / 2;
+                            const solidCenterX = solidShape.x + solidShape.width / 2;
+                            if (objCenterX < solidCenterX) {
+                                obj.x = solidShape.x - horizontalBox.width - (absPos.x - obj.x);
+                            } else {
+                                obj.x = solidShape.x + solidShape.width - (absPos.x - obj.x);
+                            }
+                            obj.vx = 0;
+                            absPos = getObjectAbsolutePosition(obj.id, objectsById);
+                            objWithAbsPosH = {...obj, ...absPos};
                         }
                     }
-                    
                     obj.y += (obj.vy || 0) * deltaTime;
-                    currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                    let objWithAbsPosV = {...obj, ...currentAbsPos};
+                    absPos = getObjectAbsolutePosition(obj.id, objectsById);
+                    let objWithAbsPosV = {...obj, ...absPos};
                     for (const solidShape of staticCollisionShapes) {
                         if (obj.id !== solidShape.owner.id && isColliding(getCollisionBox(objWithAbsPosV), solidShape)) {
-                             frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnVerticalCollision', obj1Id: obj.id, obj2Id: solidShape.owner.id });
-                             const verticalBox = getCollisionBox(objWithAbsPosV);
-                             const objCenterY = verticalBox.y + verticalBox.height / 2;
-                             const solidCenterY = solidShape.y + solidShape.height / 2;
-                             
-                             if (objCenterY < solidCenterY) {
-                                 obj.y = solidShape.y - verticalBox.height - (currentAbsPos.y - obj.y);
-                             } else {
-                                 obj.y = solidShape.y + solidShape.height - (currentAbsPos.y - obj.y);
-                             }
-                             obj.vy = 0;
-                             
-                             currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                             objWithAbsPosV = {...obj, ...currentAbsPos};
-                        }
-                    }
-                } else if (physics) {
-                    obj.x += (obj.vx || 0) * deltaTime;
-                    
-                    let currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                    let objWithAbsPos = {...obj, ...currentAbsPos};
-
-                    for (const solidShape of staticCollisionShapes) {
-                        if (obj.id !== solidShape.owner.id) {
-                            const horizontalBox = getCollisionBox(objWithAbsPos);
-                            const shrinkAmountY = 3; 
-                            const adjustedBoxH = {
-                                ...horizontalBox,
-                                y: horizontalBox.y + shrinkAmountY,
-                                height: Math.max(1, horizontalBox.height - 2 * shrinkAmountY)
-                            };
-
-                            if (isColliding(adjustedBoxH, solidShape)) {
-                                // Try stepping up (slope/ramp check)
-                                const maxStepUp = 12; // pixels we can step up
-                                let steppedUp = false;
-                                
-                                for (let step = 1; step <= maxStepUp; step++) {
-                                    const testBox = { ...adjustedBoxH, y: adjustedBoxH.y - step };
-                                    if (!isColliding(testBox, solidShape)) {
-                                        const clearedAll = staticCollisionShapes.every(otherShape => {
-                                            if (obj.id === otherShape.owner.id) return true;
-                                            const otherTestBox = { 
-                                                ...getCollisionBox({...objWithAbsPos, y: objWithAbsPos.y - step}), 
-                                                y: getCollisionBox({...objWithAbsPos, y: objWithAbsPos.y - step}).y + shrinkAmountY, 
-                                                height: Math.max(1, getCollisionBox({...objWithAbsPos, y: objWithAbsPos.y - step}).height - 2 * shrinkAmountY) 
-                                            };
-                                            return !isColliding(otherTestBox, otherShape);
-                                        });
-                                        if (clearedAll) {
-                                            obj.y -= step;
-                                            steppedUp = true;
-                                            currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                                            objWithAbsPos = {...obj, ...currentAbsPos};
-                                            break;
-                                        }
-                                    }
-                                }
-                                
-                                if (!steppedUp) {
-                                    frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnHorizontalCollision', obj1Id: obj.id, obj2Id: solidShape.owner.id });
-                                    const objCenterX = horizontalBox.x + horizontalBox.width / 2;
-                                    const solidCenterX = solidShape.x + solidShape.width / 2;
-                                    if (objCenterX < solidCenterX) {
-                                        obj.x = solidShape.x - horizontalBox.width - (currentAbsPos.x - obj.x);
-                                    } else {
-                                        obj.x = solidShape.x + solidShape.width - (currentAbsPos.x - obj.x);
-                                    }
-                                    obj.vx = 0;
-                                    
-                                    currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                                    objWithAbsPos = {...obj, ...currentAbsPos};
-                                }
+                            frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnVerticalCollision' });
+                            const verticalBox = getCollisionBox(objWithAbsPosV);
+                            const objCenterY = verticalBox.y + verticalBox.height / 2;
+                            const solidCenterY = solidShape.y + solidShape.height / 2;
+                            if (objCenterY < solidCenterY) {
+                                obj.y = solidShape.y - verticalBox.height - (absPos.y - obj.y);
+                            } else {
+                                obj.y = solidShape.y + solidShape.height - (absPos.y - obj.y);
                             }
-                        }
-                    }
-
-                    obj.grounded = false;
-                    const gravity = (obj.isClimbing || obj.parentId) ? 0 : Number(physics.properties?.gravity !== undefined ? physics.properties.gravity : 500);
-                    if (!obj.isClimbing && !obj.parentId) {
-                        obj.vy = (obj.vy || 0) + gravity * deltaTime;
-                    }
-                    obj.y += (obj.vy || 0) * deltaTime;
-                    
-                    currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                    objWithAbsPos = {...obj, ...currentAbsPos};
-
-                    for (const solidShape of staticCollisionShapes) {
-                        if (obj.id !== solidShape.owner.id) {
-                            const verticalBox = getCollisionBox(objWithAbsPos);
-                            
-                            // Check for rotated ramp slope first!
-                            if (solidShape.owner.rotation) {
-                                const surfaceY = getRotatedSurfaceY(verticalBox.x, verticalBox.width, solidShape.owner);
-                                if (surfaceY !== null) {
-                                    const playerBottom = verticalBox.y + verticalBox.height;
-                                    if ((obj.vy || 0) >= 0 && playerBottom >= surfaceY - 12 && playerBottom <= surfaceY + 16) {
-                                        frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnVerticalCollision', obj1Id: obj.id, obj2Id: solidShape.owner.id });
-                                        obj.y = surfaceY - verticalBox.height - (currentAbsPos.y - obj.y);
-                                        obj.grounded = true;
-                                        obj.vy = 0;
-                                        
-                                        const platformObj = objectsById.get(solidShape.owner.id);
-                                        if (platformObj && platformObj.platformVx) {
-                                            obj.x += platformObj.platformVx * deltaTime;
-                                        }
-                                        
-                                        currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                                        objWithAbsPos = {...obj, ...currentAbsPos};
-                                        continue;
-                                    }
-                                }
-                            }
-
-                            const shrinkAmountX = 3;
-                            const adjustedBoxV = {
-                                ...verticalBox,
-                                x: verticalBox.x + shrinkAmountX,
-                                width: Math.max(1, verticalBox.width - 2 * shrinkAmountX)
-                            };
-
-                            if (isColliding(adjustedBoxV, solidShape)) {
-                                frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnVerticalCollision', obj1Id: obj.id, obj2Id: solidShape.owner.id });
-                                if ((obj.vy || 0) > 0) {
-                                    obj.y = solidShape.y - verticalBox.height - (currentAbsPos.y - obj.y);
-                                    obj.grounded = true;
-                                    obj.vy = 0;
-                                    
-                                    const platformObj = objectsById.get(solidShape.owner.id);
-                                    if (platformObj && platformObj.platformVx) {
-                                        obj.x += platformObj.platformVx * deltaTime;
-                                    }
-                                } else if ((obj.vy || 0) < 0) {
-                                    obj.y = solidShape.y + solidShape.height - (currentAbsPos.y - obj.y);
-                                    obj.vy = 0;
-                                }
-                                currentAbsPos = getObjectAbsolutePosition(obj.id, objectsById);
-                                objWithAbsPos = {...obj, ...currentAbsPos};
-                            }
+                            obj.vy = 0;
+                            absPos = getObjectAbsolutePosition(obj.id, objectsById);
+                            objWithAbsPosV = {...obj, ...absPos};
                         }
                     }
                 } else {
@@ -2101,37 +1647,22 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             const collidables = gameObjects.map(o => ({...o, ...getObjectAbsolutePosition(o.id, objectsById)})).filter(o => !o.isUI && (o.isTouchable ?? true));
             for (let i = 0; i < collidables.length; i++) for (let j = i + 1; j < collidables.length; j++) {
                 if (isColliding(getCollisionBox(collidables[i]), getCollisionBox(collidables[j]))) {
-                    frameCollisions.push({ obj1Name: collidables[i].name, obj2Name: collidables[j].name, type: 'OnCollisionWith', obj1Id: collidables[i].id, obj2Id: collidables[j].id });
+                    frameCollisions.push({ obj1Name: collidables[i].name, obj2Name: collidables[j].name, type: 'OnCollisionWith' });
                     const o1 = gameObjects.find(o => o.id === collidables[i].id);
                     const o2 = gameObjects.find(o => o.id === collidables[j].id);
-                    const targetsDict = {
-                        [o1.name]: [o1],
-                        [o2.name]: [o2]
-                    };
-                    o1?.scripts?.forEach(s => {
-                        const sId = s.id || s.trigger;
-                        if (s.trigger === 'OnCollisionWith' && (!s.params?.targetObjectName || s.params.targetObjectName === o2?.name)) {
-                            executeActionsSequential(s.actions, o1, false, deltaTime, false, targetsDict, \`obj-\${o1.id}-script-\${sId}\`);
-                        }
-                    });
-                    o2?.scripts?.forEach(s => {
-                        const sId = s.id || s.trigger;
-                        if (s.trigger === 'OnCollisionWith' && (!s.params?.targetObjectName || s.params.targetObjectName === o1?.name)) {
-                            executeActionsSequential(s.actions, o2, false, deltaTime, false, targetsDict, \`obj-\${o2.id}-script-\${sId}\`);
-                        }
-                    });
+                    o1?.scripts?.forEach(s => s.trigger === 'OnCollisionWith' && (!s.params?.targetObjectName || s.params.targetObjectName === o2?.name) && s.actions.forEach(a => executeAction(a, o1, false, deltaTime)));
+                    o2?.scripts?.forEach(s => s.trigger === 'OnCollisionWith' && (!s.params?.targetObjectName || s.params.targetObjectName === o1?.name) && s.actions.forEach(a => executeAction(a, o2, false, deltaTime)));
                 }
             }
             
             gameObjects.forEach(obj => {
                 obj.scripts?.forEach(script => {
-                    const scriptId = script.id || script.trigger;
                     if (script.trigger === 'OnUpdate' || script.trigger === 'Always') {
-                        executeActionsSequential(script.actions, obj, true, deltaTime, false, undefined, \`obj-\${obj.id}-script-\${scriptId}\`);
+                        script.actions.forEach(action => executeAction(action, obj, true, deltaTime));
                     } else if (!['OnStart', 'OnClick', 'OnCollisionWith', 'OnTimerElapsed', 'OnDialogueEnd'].includes(script.trigger)) {
                         const mockCond = { trigger: script.trigger, object: obj.name, params: script.params, target: script.params?.targetObjectName };
                         if (checkCondition(mockCond, obj)) {
-                            executeActionsSequential(script.actions, obj, true, deltaTime, false, undefined, \`obj-\${obj.id}-script-\${scriptId}\`);
+                            script.actions.forEach(action => executeAction(action, obj, true, deltaTime));
                         }
                     }
                 });
@@ -2233,10 +1764,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 }
             });
             
-            
-            const followCameraBehavior = gameObjects.find(o => o.behaviors?.some(b => b.name === 'FollowCamera'));
-            const followTarget = followCameraBehavior;
-            
+            const followTarget = gameObjects.find(o => o.behaviors?.some(b => b.name === 'FollowCamera')) || gameObjects.find(o => o.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement'));
             if (followTarget) {
                 const absPos = getObjectAbsolutePosition(followTarget.id, objectsById);
                 const followTargetWithAbsPos = {...followTarget, ...absPos};
@@ -2270,13 +1798,9 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     camera.x = idealCamX;
                     camera.y = idealCamY;
                 }
-            } else {
-                camera.x = canvas.width / 2;
-                camera.y = canvas.height / 2;
             }
 
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
+            ctx.imageSmoothingEnabled = window.projectData && window.projectData.hdRendering !== false;
             ctx.fillStyle = runtimeBackgroundColor;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.save();
@@ -2284,10 +1808,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             ctx.scale(camera.zoom, camera.zoom);
             ctx.translate(-camera.x, -camera.y);
             
-            const allDrawable = gameObjects.map(o => {
-                const absPos = getObjectAbsolutePosition(o.id, objectsById);
-                return { ...o, absX: absPos.x, absY: absPos.y };
-            });
+            const allDrawable = gameObjects.map(o => ({...o, ...getObjectAbsolutePosition(o.id, objectsById)}));
             allDrawable.filter(o => !o.isUI).sort((a,b) => a.zIndex-b.zIndex).forEach(obj => renderObject(ctx, obj));
             ctx.restore();
             allDrawable.filter(o => o.isUI).sort((a,b) => a.zIndex-b.zIndex).forEach(obj => renderObject(ctx, obj, true));
@@ -2303,10 +1824,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             frameTriggerDown = [];
             frameTriggerUp = [];
             frameConsoleCommands = [];
-            framePlayerJoined = false;
-            framePlayerLeft = false;
-            frameMatchFound = false;
-            frameReceiveNetworkMessage = false;
             frameDialogueEnd = false;
 
             animationFrameId = requestAnimationFrame(gameLoop);
@@ -2318,11 +1835,11 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 const img = imageCache.get(obj.imageUrl);
                 if (img && img.complete) {
                     const { tileSize = 32, collisionData = '' } = tilemapBehavior.properties || {};
-                    const rows = String(collisionData).split('\\n');
+                    const rows = String(collisionData).split('\n');
                     rows.forEach((row, y) => {
                         for (let x = 0; x < row.length; x++) {
                             if (row[x] !== ' ' && row[x] !== '0') {
-                                context.drawImage(img, (obj.absX || obj.x) + x * tileSize, (obj.absY || obj.y) + y * tileSize, tileSize, tileSize);
+                                context.drawImage(img, obj.x + x * tileSize, obj.y + y * tileSize, tileSize, tileSize);
                             }
                         }
                     });
@@ -2334,8 +1851,8 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             if (obj.visible === false) { context.restore(); return; }
             context.globalAlpha = obj.opacity ?? 1;
 
-            const centerX = isUI ? (obj.absX || obj.x) + obj.width/2 : (obj.absX || obj.x) + obj.width/2;
-            const centerY = isUI ? (obj.absY || obj.y) + obj.height/2 : (obj.absY || obj.y) + obj.height/2;
+            const centerX = isUI ? obj.x + obj.width/2 : obj.x + obj.width/2;
+            const centerY = isUI ? obj.y + obj.height/2 : obj.y + obj.height/2;
             context.translate(centerX + (obj.animOffsetX || 0), centerY + (obj.animOffsetY || 0));
             context.rotate(((obj.rotation || 0) + (obj.animRotation || 0)) * Math.PI / 180);
             const scaleX = (obj.scaleX ?? 1) * (obj.animScaleX ?? 1) * (obj.direction === 'left' ? -1 : 1);
@@ -2418,57 +1935,22 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 }
             } else if (obj.imageUrl) {
                 const img = imageCache.get(obj.imageUrl);
-                if (img?.complete) {
-                    const imgRatio = (img.naturalWidth || img.width) / (img.naturalHeight || img.height);
-                    const boxRatio = obj.width / obj.height;
-                    let drawW = obj.width;
-                    let drawH = obj.height;
-                    let offsetX = 0;
-                    let offsetY = 0;
-                    
-                    if (imgRatio > boxRatio) {
-                        drawH = obj.width / imgRatio;
-                        offsetY = (obj.height - drawH) / 2;
-                    } else {
-                        drawW = obj.height * imgRatio;
-                        offsetX = (obj.width - drawW) / 2;
-                    }
-                    context.drawImage(img, drawX + offsetX, drawY + offsetY, drawW, drawH);
-                }
+                if (img?.complete) context.drawImage(img, drawX, drawY, obj.width, obj.height);
             } else if (obj.color !== 'transparent') {
                 context.fillStyle = obj.color;
                 context.fillRect(drawX, drawY, obj.width, obj.height);
             }
-            
-            // Draw Health Bar
-            const healthBehavior = obj.behaviors?.find(b => b.name === 'Health');
-            if (healthBehavior && healthBehavior.properties.showHealthBar !== false && obj.stats) {
-                const hp = obj.stats.hp ?? 100;
-                const maxHp = obj.stats.maxHp ?? 100;
-                const hpPercent = Math.max(0, Math.min(1, hp / maxHp));
-                
-                const barWidth = obj.width;
-                const barHeight = 6;
-                const barY = drawY - barHeight - 4;
-                const barX = drawX;
-                
-                context.fillStyle = 'rgba(0,0,0,0.6)';
-                context.fillRect(barX, barY, barWidth, barHeight);
-                context.fillStyle = hpPercent > 0.5 ? '#22c55e' : (hpPercent > 0.25 ? '#eab308' : '#ef4444');
-                context.fillRect(barX, barY, barWidth * hpPercent, barHeight);
-            }
-
             if (obj.text) {
                 if (scaleX < 0) context.scale(-1, 1);
-                context.fillStyle = obj.textColor || (isUI ? 'white' : (obj.color === 'transparent' ? 'white' : 'black'));
-                context.font = "bold " + (obj.fontSize || 16) + "px sans-serif";
+                context.fillStyle = isUI ? 'white' : (obj.color === 'transparent' ? 'white' : 'black');
+                context.font = '16px sans-serif';
                 context.textAlign = 'center';
                 context.textBaseline = 'middle';
                 let newText = obj.text;
-                for (const key in gameVariables) newText = newText.replace(new RegExp('\\{' + key + '\\}', 'g'), String(gameVariables[key]));
+                for (const key in gameVariables) newText = newText.replace(new RegExp('\{' + key + '\}', 'g'), String(gameVariables[key]));
                 if (obj.variables) {
                     obj.variables.forEach(v => {
-                        newText = newText.replace(new RegExp('\\{' + v.name + '\\}', 'g'), String(v.value));
+                        newText = newText.replace(new RegExp('\{' + v.name + '\}', 'g'), String(v.value));
                     });
                 }
                 context.fillText(newText, 0, 0);
@@ -2526,21 +2008,8 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         }
                     }
                 }
-                currentScene.events.forEach(e => {
-                    const hasOnStart = e.conditions.some(c => c.trigger === 'OnStart');
-                    if (hasOnStart) {
-                        const otherConditionsMet = e.conditions.filter(c => c.trigger !== 'OnStart').every(c => checkCondition(c, null, null));
-                        if (otherConditionsMet) {
-                            executeActionsSequential(e.actions, null, false, 0, false, undefined, \`event-\${e.id}\`);
-                        }
-                    }
-                });
-                gameObjects.forEach(o => o.scripts?.forEach(s => {
-                    if (s.trigger === 'OnStart') {
-                        const sId = s.id || s.trigger;
-                        executeActionsSequential(s.actions, o, false, 0, false, undefined, \`obj-\${o.id}-script-\${sId}\`);
-                    }
-                }));
+                currentScene.events.forEach(e => e.conditions.every(c=>c.trigger==='OnStart') && e.actions.forEach(a => executeAction(a, null)));
+                gameObjects.forEach(o => o.scripts?.forEach(s => s.trigger==='OnStart' && s.actions.forEach(a => executeAction(a, o))));
             }
             activeAnimations.clear();
             timers.clear();
@@ -2691,13 +2160,8 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             });
 
             if (clickedObject) {
-                frameClicks.push({ name: clickedObject.name, id: clickedObject.id });
-                clickedObject.scripts?.forEach(s => {
-                    if (s.trigger === 'OnClick') {
-                        const sId = s.id || s.trigger;
-                        executeActionsSequential(s.actions, clickedObject, true, 0, false, undefined, \`obj-\${clickedObject.id}-script-\${sId}\`);
-                    }
-                });
+                frameClicks.push(clickedObject.name);
+                clickedObject.scripts?.forEach(s => s.trigger==='OnClick' && s.actions.forEach(a => executeAction(a, clickedObject, true)));
                 
                 if (clickedObject.isDraggable) {
                     const absPos = getObjectAbsolutePosition(clickedObject.id, objectsById);
@@ -2758,7 +2222,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 button.style.top = (obj.y * scaleY) + 'px';
                 button.style.width = (obj.width * scaleX) + 'px';
                 button.style.height = (obj.height * scaleY) + 'px';
-                button.style.background = obj.imageUrl ? \`url(\${obj.imageUrl})\` : obj.color;
+                button.style.background = obj.imageUrl ? `url(${obj.imageUrl})` : obj.color;
                 button.style.backgroundSize = 'contain';
                 button.style.backgroundRepeat = 'no-repeat';
                 button.style.backgroundPosition = 'center';
@@ -2780,12 +2244,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
-                    obj.scripts?.forEach(s => {
-                        if (s.trigger === 'OnClick') {
-                            const sId = s.id || s.trigger;
-                            executeActionsSequential(s.actions, obj, false, 0, false, undefined, \`obj-\${obj.id}-script-\${sId}\`);
-                        }
-                    });
+                    obj.scripts?.forEach(s => s.trigger === 'OnClick' && s.actions.forEach(a => executeAction(a, obj)));
                 });
             });
             
@@ -2821,7 +2280,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     if (joystickState.active) {
                         const x = joystickState.distance * Math.cos(joystickState.angle * Math.PI / 180);
                         const y = joystickState.distance * Math.sin(joystickState.angle * Math.PI / 180);
-                        joystickHandle.style.transform = \`translate(\${x}px, \${y}px)\`;
+                        joystickHandle.style.transform = `translate(${x}px, ${y}px)`;
                     } else {
                         joystickHandle.style.transform = 'translate(0, 0)';
                     }
@@ -2930,33 +2389,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 window.dispatchEvent(new Event('resize'));
             });
         });
-    `;
-
-    const imageRenderingStyle = projectData.hdRendering !== false ? 'auto' : 'pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges';
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Return 2D Game</title>
-    <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #000; display: flex; justify-content: center; align-items: center; font-family: sans-serif; color: white; }
-        #game-container { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-        canvas { display: block; image-rendering: ${imageRenderingStyle}; max-width: 100%; max-height: 100%; }
-        #ui-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
-        #ui-container button, #ui-container div { pointer-events: auto; }
-    </style>
-</head>
-<body>
-    <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
-        <div id="ui-container"></div>
-    </div>
-    <script>
-        window.projectData = ${JSON.stringify(projectData || null).replace(/<\/script>/g, '<\\/script>')};
-        ${gameEngineScript}
+    
     </script>
 </body>
-</html>`;
-};
+</html>

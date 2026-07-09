@@ -1,13 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { GameObject, GameAsset, Scene } from '../types';
-import { PlusIcon } from './icons/PlusIcon';
-import { DesktopIcon } from './icons/DesktopIcon';
-import { CameraIcon } from './icons/CameraIcon';
+import { 
+  Plus, 
+  Monitor, 
+  Zap, 
+  Settings2, 
+  Maximize, 
+  MousePointer2, 
+  Hand, 
+  RotateCw, 
+  Layers
+} from 'lucide-react';
 import { useLanguage } from '../LanguageContext';
-
 interface SceneEditorProps {
   scene: Scene | undefined;
   objects: GameObject[];
+  assets: GameAsset[];
   selectedId: number | null;
   onSelect: (id: number | null) => void;
   onUpdateObject: (id: number, updates: Partial<GameObject>) => void;
@@ -15,11 +23,12 @@ interface SceneEditorProps {
   onOpenEventEditor: () => void;
   gameWidth: number;
   gameHeight: number;
+  globalObjects?: GameObject[];
 }
 
 type GameObjectWithAbsPos = GameObject & { absPos: { x: number; y: number }};
 
-const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, selectedId, onSelect, onUpdateObject, onAddObject, onOpenEventEditor, gameWidth, gameHeight }) => {
+const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selectedId, onSelect, onUpdateObject, onAddObject, onOpenEventEditor, gameWidth, gameHeight, globalObjects }) => {
   const { t } = useLanguage();
   const sceneRef = useRef<HTMLDivElement>(null);
   const [draggingState, setDraggingState] = useState<{ 
@@ -328,10 +337,24 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, selectedId, o
     setDragOverObjectId(null);
     const objectIdString = e.dataTransfer.getData('application/game-object-id');
     const assetString = e.dataTransfer.getData('application/game-asset');
+    const templateString = e.dataTransfer.getData('application/game-object-template');
     
     const { x: dropX, y: dropY } = getSceneCoords(e);
 
-    if (objectIdString) {
+    if (templateString) {
+        try {
+            const templateObj = JSON.parse(templateString);
+            const newObj = {
+                ...templateObj,
+                id: Date.now(),
+                x: dropX - (templateObj.width || 50) / 2,
+                y: dropY - (templateObj.height || 50) / 2,
+            };
+            onAddObject(newObj);
+        } catch (e) {
+            console.error("Error parsing template string", e);
+        }
+    } else if (objectIdString) {
       const id = parseInt(objectIdString, 10);
       const object = localObjectsWithAbsPos.find(o => o.id === id);
       if (!object) return;
@@ -480,6 +503,11 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, selectedId, o
         className={`absolute cursor-grab transition-all duration-75 ${isDraggingThis ? 'cursor-grabbing' : ''}`}
         style={style}
       >
+        {obj.modelUrl && (
+          <div className="absolute top-1 right-1 bg-pink-600 text-[8px] font-black text-white px-1 py-0.5 rounded shadow-lg border border-white/20 select-none uppercase tracking-wider z-20 scale-90">
+            📦 3D
+          </div>
+        )}
         {isNode && ( <div className="absolute w-full h-full"> <div className="absolute top-1/2 left-0 w-full h-[1px] bg-white/50 -translate-y-1/2"></div> <div className="absolute left-1/2 top-0 h-full w-[1px] bg-white/50 -translate-x-1/2"></div> </div> )}
         {obj.isUI && obj.text && <span className="p-1 select-none overflow-hidden font-bold text-white" style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}> {obj.text} </span>}
         {!obj.isUI && selectedId === obj.id && <div className="absolute -top-5"><span className="text-xs text-white p-1 bg-black bg-opacity-50 select-none rounded-sm" style={{transform: `scale(${1/zoom})`, transformOrigin: 'bottom center'}}>{obj.name}</span></div>}
@@ -519,19 +547,68 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, selectedId, o
 
   return (
     <div className="flex-grow flex flex-col bg-gray-950 relative">
-      <div className="flex items-center gap-2 p-2 bg-gray-900 border-b border-gray-800 shrink-0 flex-wrap">
-        <button onClick={handleAddGameObjectClick} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-md text-sm transition-colors">
-          <PlusIcon />
-          {t('sceneEditor.addObject')}
+      <div className="flex items-center h-10 px-2 bg-[#1a1a1a] border-b border-[#333333] shrink-0 gap-1 select-none">
+        <div className="flex items-center gap-0.5 bg-[#252525] p-0.5 rounded border border-white/5 mr-2">
+          <button title="Seleccionar (v)" className="p-1.5 rounded bg-indigo-600 text-white shadow-lg"><MousePointer2 size={14} /></button>
+          <button title="Panoramica (h)" className="p-1.5 rounded hover:bg-white/5 text-gray-400 transition-colors"><Hand size={14} /></button>
+          <button title="Rotar (r)" className="p-1.5 rounded hover:bg-white/5 text-gray-400 transition-colors"><RotateCw size={14} /></button>
+        </div>
+
+        <div className="h-4 w-[1px] bg-white/10 mx-1" />
+
+        <button onClick={handleAddGameObjectClick} className="flex items-center gap-2 hover:bg-white/5 text-gray-300 px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
+          <Layers size={14} className="text-indigo-400" />
+          Objeto
         </button>
-        <button onClick={handleAddUIObjectClick} className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold px-3 py-1.5 rounded-md text-sm transition-colors">
-            <DesktopIcon />
-            {t('sceneEditor.addUIObject')}
+        <button onClick={handleAddUIObjectClick} className="flex items-center gap-2 hover:bg-white/5 text-gray-300 px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
+            <Monitor size={14} className="text-green-400" />
+            UI
         </button>
-        <button onClick={onOpenEventEditor} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold px-3 py-1.5 rounded-md text-sm transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg>
-          {t('sceneEditor.eventEditor')}
+        <button onClick={onOpenEventEditor} className="flex items-center gap-2 hover:bg-white/5 text-gray-300 px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
+          <Zap size={14} className="text-yellow-400" />
+          Eventos
         </button>
+
+        {globalObjects && globalObjects.length > 0 && (
+          <div className="relative group">
+            <button className="flex items-center gap-2 hover:bg-white/5 text-gray-300 px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider transition-colors">
+              <Layers size={14} className="text-yellow-400 animate-pulse" />
+              Globales ({globalObjects.length})
+            </button>
+            <div className="absolute left-0 mt-0 w-48 bg-[#1e1e1e] border border-[#333333] rounded shadow-xl hidden group-hover:block z-50">
+              <div className="p-1 max-h-60 overflow-y-auto">
+                {globalObjects.map(obj => (
+                  <button
+                    key={obj.id}
+                    onClick={() => {
+                      onAddObject({
+                        ...JSON.parse(JSON.stringify(obj)),
+                        id: Date.now() + Math.random(),
+                        x: 100,
+                        y: 100,
+                        isGlobal: true,
+                      });
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#333333] text-gray-300 hover:text-white rounded text-[11px] font-medium truncate"
+                  >
+                    {obj.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="h-4 w-[1px] bg-white/10 mx-1" />
+
+        <div className="ml-auto flex items-center gap-3">
+            <div className="flex items-center gap-2 px-2 py-1 bg-black/40 rounded border border-white/5 text-[10px] font-mono text-gray-500">
+                <span className="text-indigo-400/70">ZOOM</span>
+                <span className="text-gray-300">{Math.round(zoom * 100)}%</span>
+            </div>
+            <button className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Settings"><Settings2 size={16} /></button>
+            <button className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Full View"><Maximize size={16} /></button>
+        </div>
       </div>
 
       <div
@@ -553,62 +630,62 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, selectedId, o
             transformOrigin: 'top left',
           }}
         >
-            <div 
-              className="absolute border-2 border-dashed border-white/50 pointer-events-none"
-              style={{
-                left: 0,
-                top: 0,
-                width: gameWidth,
-                height: gameHeight,
-                boxShadow: `0 0 0 9999px rgba(0,0,0,0.6)`,
-                backgroundSize: `20px 20px`, 
-                backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.05) 1px, rgba(0,0,0,0) 1px)'
-              }}
-            >
-                {localObjectsWithAbsPos.filter(o => o.isUI).sort((a,b) => a.zIndex - b.zIndex).map(renderObject)}
-            </div>
-             {scene?.cameraBounds?.enabled && (
-                  <div className="absolute border-2 border-dashed border-cyan-400 pointer-events-none" style={{
-                      left: scene.cameraBounds.x,
-                      top: scene.cameraBounds.y,
-                      width: scene.cameraBounds.width,
-                      height: scene.cameraBounds.height,
-                  }}/>
-              )}
-            {localObjectsWithAbsPos.filter(o => !o.isUI).sort((a,b) => a.zIndex - b.zIndex).map(renderObject)}
-            {selectedObjectData && (
-                <div 
-                    className="absolute pointer-events-none"
-                    style={{
-                        left: selectedObjectData.absPos.x,
-                        top: selectedObjectData.absPos.y,
-                        width: selectedObjectData.width,
-                        height: selectedObjectData.height,
-                        transform: `rotate(${selectedObjectData.rotation || 0}deg)`,
-                        transformOrigin: 'center',
-                    }}
-                >
-                    <div 
-                        className="absolute w-full h-full border-2 border-indigo-500"
-                        style={{
-                           transform: `scale(${selectedObjectData.scaleX ?? 1}, ${selectedObjectData.scaleY ?? 1})`,
-                           transformOrigin: 'center'
-                        }}
-                    />
-                     <div
-                        className="absolute bg-indigo-500 rounded-full cursor-alias pointer-events-auto hover:ring-4 ring-indigo-400/50"
-                        title={t('sceneEditor.rotateObject')}
-                        style={{
-                            width: `${16 / zoom}px`,
-                            height: `${16 / zoom}px`,
-                            top: `calc(0% - ${8 / zoom}px)`,
-                            left: `calc(100% + ${8 / zoom}px)`,
-                            transform: `translateY(${selectedObjectData.height / 2}px)`,
-                        }}
-                        onMouseDown={handleRotationStart}
-                    />
-                </div>
+          <div 
+            className="absolute border-2 border-dashed border-white/50 pointer-events-none"
+            style={{
+              left: 0,
+              top: 0,
+              width: gameWidth,
+              height: gameHeight,
+              boxShadow: `0 0 0 9999px rgba(0,0,0,0.6)`,
+              backgroundSize: `20px 20px`, 
+              backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.05) 1px, rgba(0,0,0,0) 1px)'
+            }}
+          >
+              {localObjectsWithAbsPos.filter(o => o.isUI).sort((a,b) => a.zIndex - b.zIndex).map(renderObject)}
+          </div>
+           {scene?.cameraBounds?.enabled && (
+                <div className="absolute border-2 border-dashed border-cyan-400 pointer-events-none" style={{
+                    left: scene.cameraBounds.x,
+                    top: scene.cameraBounds.y,
+                    width: scene.cameraBounds.width,
+                    height: scene.cameraBounds.height,
+                }}/>
             )}
+          {localObjectsWithAbsPos.filter(o => !o.isUI).sort((a,b) => a.zIndex - b.zIndex).map(renderObject)}
+          {selectedObjectData && (
+              <div 
+                  className="absolute pointer-events-none"
+                  style={{
+                      left: selectedObjectData.absPos.x,
+                      top: selectedObjectData.absPos.y,
+                      width: selectedObjectData.width,
+                      height: selectedObjectData.height,
+                      transform: `rotate(${selectedObjectData.rotation || 0}deg)`,
+                      transformOrigin: 'center',
+                  }}
+              >
+                  <div 
+                      className="absolute w-full h-full border-2 border-indigo-500"
+                      style={{
+                         transform: `scale(${selectedObjectData.scaleX ?? 1}, ${selectedObjectData.scaleY ?? 1})`,
+                         transformOrigin: 'center'
+                      }}
+                  />
+                   <div
+                      className="absolute bg-indigo-500 rounded-full cursor-alias pointer-events-auto hover:ring-4 ring-indigo-400/50"
+                      title={t('sceneEditor.rotateObject')}
+                      style={{
+                          width: `${16 / zoom}px`,
+                          height: `${16 / zoom}px`,
+                          top: `calc(0% - ${8 / zoom}px)`,
+                          left: `calc(100% + ${8 / zoom}px)`,
+                          transform: `translateY(${selectedObjectData.height / 2}px)`,
+                      }}
+                      onMouseDown={handleRotationStart}
+                  />
+              </div>
+          )}
         </div>
       </div>
     </div>

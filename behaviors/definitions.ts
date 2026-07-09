@@ -14,6 +14,10 @@ export const availableBehaviors: BehaviorDefinition[] = [
       speed: 150,
       jumpForce: 350,
       gravity: 500,
+      idleAnimId: '',
+      runAnimId: '',
+      jumpAnimId: '',
+      attackAnimId: '',
     },
   },
   {
@@ -21,6 +25,10 @@ export const availableBehaviors: BehaviorDefinition[] = [
     description: 'Habilita movimiento en 8 direcciones (arriba/abajo/lados/diagonales) sin gravedad.',
     defaultProperties: {
       speed: 100,
+      idleAnimId: '',
+      runAnimId: '',
+      jumpAnimId: '',
+      attackAnimId: '',
     },
   },
   {
@@ -41,6 +49,7 @@ export const availableBehaviors: BehaviorDefinition[] = [
     defaultProperties: {
       speed: 50,
       range: 100,
+      sticky: true,
     },
   },
   {
@@ -50,6 +59,7 @@ export const availableBehaviors: BehaviorDefinition[] = [
       axis: 'x',
       distance: 100,
       speed: 2,
+      sticky: true,
     },
   },
   {
@@ -78,6 +88,75 @@ export const availableBehaviors: BehaviorDefinition[] = [
     defaultProperties: {
       tileSize: 32,
       collisionData: '11111111111111111111\n10000000000000000001\n10000000000000000001\n10000000000000000001\n11111111111111111111',
+    },
+  },
+  {
+    name: 'Health',
+    description: 'Gestiona la salud y puntos de vida (hp) del objeto.',
+    defaultProperties: {
+      hp: 100,
+      maxHp: 100,
+      showHealthBar: true,
+    },
+  },
+  {
+    name: 'ScoreCounter',
+    description: 'Muestra el valor de una variable. Usa {value} en la plantilla de texto.',
+    defaultProperties: {
+      variableName: 'score',
+      format: 'Score: {value}',
+    },
+  },
+  {
+    name: 'Attack',
+    description: 'Genera un cubo de daño al atacar.',
+    defaultProperties: {
+      attackDistance: 30,
+      damage: 10,
+    },
+  },
+  {
+    name: 'TweenPath',
+    description: 'Mueve el objeto siguiendo una serie de puntos.',
+    defaultProperties: {
+      speed: 100,
+      loop: true,
+      points: '0,0;100,100',
+    },
+  },
+  {
+    name: 'TextVariable',
+    description: 'Muestra el valor de una variable en este objeto de texto.',
+    defaultProperties: {
+      variableName: '',
+      prefix: '',
+      suffix: '',
+    },
+  },
+  {
+    name: 'Boss',
+    description: 'Comportamiento de Jefe (Boss). Persigue al jugador, salta obstáculos, y lanza proyectiles con intervalo, velocidad y color personalizados.',
+    defaultProperties: {
+      hp: 500,
+      maxHp: 500,
+      speed: 80,
+      jumpForce: 300,
+      attackInterval: 2,
+      attackSpeed: 300,
+      followPlayer: true,
+      projectileColor: '#ef4444',
+    },
+  },
+  {
+    name: 'Ladder',
+    description: 'Convierte el objeto en una escalera que se puede subir superponiéndose con ella.',
+    defaultProperties: {},
+  },
+  {
+    name: 'LadderClimber',
+    description: 'Permite al objeto subir y bajar por escaleras usando los controles de dirección (Arriba / Abajo).',
+    defaultProperties: {
+      speed: 100,
     },
   },
 ];

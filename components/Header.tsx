@@ -1,13 +1,23 @@
-import React, { useRef } from 'react';
-import { PlayIcon } from './icons/PlayIcon';
-import { SaveIcon } from './icons/SaveIcon';
-import { ExportIcon } from './icons/ExportIcon';
-import { StopIcon } from './StopIcon';
-import { BackButtonIcon } from './icons/BackButtonIcon';
-import { CodeIcon } from './icons/CodeIcon';
-import { Logo } from './Logo';
+import React, { useRef, useState } from 'react';
+import { 
+  Play, 
+  Square, 
+  Save, 
+  Download, 
+  Code, 
+  ChevronLeft, 
+  Globe,
+  Upload,
+  Box,
+  Layout as LayoutIcon,
+  HelpCircle,
+  Database,
+  Sparkles
+} from 'lucide-react';
 import { useLanguage } from '../LanguageContext';
 import { Language } from '../translations';
+import SmartCommandBar from './SmartCommandBar';
+import type { Scene, GameObject, ProjectData } from '../types';
 
 interface HeaderProps {
   onSave: () => void;
@@ -19,95 +29,170 @@ interface HeaderProps {
   onImportProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   projectName: string;
   onUpdateProjectName: (newName: string) => void;
+  projectIcon: string;
+  onUpdateProjectIcon: (newIcon: string) => void;
+  activeScene: Scene | undefined;
+  projectData: ProjectData | null;
+  onUpdateProjectData: (updates: Partial<ProjectData>) => void;
+  onAddObject: (props?: Partial<GameObject>) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onSave, isPlaying, onTogglePlay, onExport, onViewCode, onReturnToStart, onImportProject, projectName, onUpdateProjectName }) => {
+const GAME_ICONS = ['🎮', '👾', '🚀', '🧱', '🤠', '⚔️', '⚽', '🪄', '🏰', '💎', '🍎', '🦖', '👻', '👽', '👑', '🌟', '🐱', '🦊', '🦄', '🍕', '🚗', '✈️', '🏝️', '🌋', '🎯', '🎸', '🎨', '🧩', '🔑', '❤️'];
+
+const Header: React.FC<HeaderProps> = ({ 
+  onSave, isPlaying, onTogglePlay, onExport, onViewCode, onReturnToStart, onImportProject, projectName, onUpdateProjectName,
+  projectIcon, onUpdateProjectIcon,
+  activeScene, projectData, onUpdateProjectData, onAddObject
+}) => {
   const { t, language, setLanguage } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const iconButtonStyle = "p-2 bg-gray-800 hover:bg-indigo-600 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
-  const playButtonStyle = "p-2 bg-green-600 hover:bg-green-500 rounded-md transition-colors duration-200";
-  const stopButtonStyle = "p-2 bg-red-600 hover:bg-red-500 rounded-md transition-colors duration-200";
+  const [showIconPicker, setShowIconPicker] = useState(false);
   
   const languages: { code: Language; label: string }[] = [
-    { code: 'es', label: 'Español' },
-    { code: 'en', label: 'English' },
-    { code: 'pt-BR', label: 'Português' },
-    { code: 'ca', label: 'Català' },
-    { code: 'fr', label: 'Français' },
-    { code: 'it', label: 'Italiano' },
-    { code: 'ru', label: 'Русский' },
+    { code: 'es', label: 'ESP' },
+    { code: 'en', label: 'ENG' },
+    { code: 'pt-BR', label: 'POR' },
+    { code: 'fr', label: 'FRA' },
+    { code: 'it', label: 'ITA' },
   ];
 
   return (
-    <header className="flex items-center justify-between p-2 bg-black border-b border-gray-800 shadow-lg shrink-0 h-16">
-      <div className="flex items-center gap-2 flex-1">
-        <button onClick={onReturnToStart} title={t('header.return')} className="p-2 hover:bg-gray-800 rounded-md transition-colors">
-            <BackButtonIcon />
+    <header className="flex items-center justify-between p-0 px-2 bg-[#121212] border-b border-[#333333] shadow-xl shrink-0 h-10 select-none">
+      {/* Search / Project Info */}
+      <div className="flex items-center gap-4 flex-1">
+        <button onClick={onReturnToStart} title={t('header.return')} className="p-1.5 hover:bg-white/10 rounded transition-colors text-gray-400 hover:text-white">
+            <ChevronLeft size={18} />
         </button>
-        <div className="flex items-center gap-2 text-xl font-bold text-indigo-400">
-            <Logo className="h-8 hidden md:flex" simple />
+        
+        <div className="flex items-center gap-2">
+            <div className="relative">
+                <button 
+                    onClick={() => setShowIconPicker(!showIconPicker)}
+                    className="w-7 h-7 bg-indigo-600 rounded flex items-center justify-center text-md shadow-lg shadow-indigo-500/20 hover:scale-105 active:scale-95 transition-all overflow-hidden p-0"
+                    title="Cambiar Icono del Proyecto"
+                >
+                    {projectIcon && (projectIcon.startsWith('data:image/') || projectIcon.startsWith('http://') || projectIcon.startsWith('https://')) ? (
+                        <img src={projectIcon} alt="Project Icon" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                        projectIcon || '🎮'
+                    )}
+                </button>
+                {showIconPicker && (
+                    <div className="absolute top-9 left-0 bg-[#161616] border border-[#333333] rounded-lg shadow-2xl p-2 z-[100] w-48 flex flex-col gap-2">
+                        <div className="text-[9px] font-bold text-gray-500 uppercase tracking-widest px-1">Elegir Icono</div>
+                        <div className="grid grid-cols-5 gap-1">
+                            {GAME_ICONS.map(icon => (
+                                <button
+                                    key={icon}
+                                    onClick={() => {
+                                        onUpdateProjectIcon(icon);
+                                        setShowIconPicker(false);
+                                    }}
+                                    className={`w-7 h-7 rounded text-center text-sm flex items-center justify-center hover:bg-indigo-600/20 transition-all ${projectIcon === icon ? 'bg-indigo-600 text-white' : 'text-gray-300'}`}
+                                >
+                                    {icon}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="mt-1.5 pt-1.5 border-t border-white/5">
+                            <label className="flex items-center justify-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px] cursor-pointer transition-all font-medium">
+                                <Upload size={12} />
+                                <span>Subir de PC / Móvil</span>
+                                <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    className="hidden" 
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            const reader = new FileReader();
+                                            reader.onload = () => {
+                                                if (typeof reader.result === 'string') {
+                                                    onUpdateProjectIcon(reader.result);
+                                                    setShowIconPicker(false);
+                                                }
+                                            };
+                                            reader.readAsDataURL(file);
+                                        }
+                                    }}
+                                />
+                            </label>
+                        </div>
+                    </div>
+                )}
+            </div>
+            <div className="flex flex-col">
+                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest leading-none">Return 2D Engine</span>
+                <input 
+                    type="text" 
+                    value={projectName} 
+                    onChange={(e) => onUpdateProjectName(e.target.value)}
+                    className="bg-transparent border-none p-0 text-[11px] font-bold text-gray-200 focus:outline-none focus:ring-0 w-32 md:w-48 placeholder-gray-600"
+                    placeholder="Project Name"
+                />
+            </div>
         </div>
-        <input 
-          type="text" 
-          value={projectName} 
-          onChange={(e) => onUpdateProjectName(e.target.value)}
-          className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1.5 text-sm w-48 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+
+        <SmartCommandBar 
+          activeScene={activeScene}
+          projectData={projectData}
+          onUpdateProjectData={onUpdateProjectData}
+          onAddObject={onAddObject}
         />
       </div>
 
-      <div className="flex justify-center flex-1 gap-2">
-        <select 
-          value={language} 
-          onChange={(e) => setLanguage(e.target.value as Language)}
-          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-        >
-          {languages.map(lang => (
-            <option key={lang.code} value={lang.code}>{lang.label}</option>
-          ))}
-        </select>
+      {/* Center Controls */}
+      <div className="flex justify-center flex-1 gap-1 h-full items-center">
         <button 
-          onClick={() => fileInputRef.current?.click()}
-          className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-md border border-gray-700 transition-colors"
+          onClick={onTogglePlay}
+          className={`flex items-center gap-2 px-4 h-7 rounded text-[10px] font-bold uppercase transition-all shadow-lg ${isPlaying ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-[#2a2a2a] hover:bg-green-600 text-gray-300 hover:text-white'}`}
+          title={isPlaying ? t('header.stop') : t('header.play')}
         >
-          {t('header.import')}
+          {isPlaying ? <Square size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
+          <span>{isPlaying ? 'Detener' : 'Ejecutar'}</span>
         </button>
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          onChange={onImportProject} 
-          accept=".json" 
-          className="hidden" 
-        />
+        
+        <div className="h-4 w-[1px] bg-white/10 mx-2" />
+
+        <div className="flex bg-[#1a1a1a] rounded overflow-hidden border border-white/5">
+             <button onClick={onViewCode} className="p-1 px-3 hover:bg-white/5 text-gray-400 hover:text-white transition-colors" title="Ver Código">
+                <Code size={14} />
+             </button>
+             <button onClick={onSave} className="p-1 px-3 border-l border-white/5 hover:bg-white/5 text-indigo-400 hover:text-indigo-300 transition-colors" title="Guardar">
+                <Save size={14} />
+             </button>
+        </div>
       </div>
       
-      <div className="flex items-center justify-end gap-3 flex-1">
+      {/* Right Controls */}
+      <div className="flex items-center justify-end gap-1 flex-1">
+        <div className="hidden lg:flex items-center gap-1 mr-2">
+            <button className="p-1.5 text-gray-500 hover:text-white"><Database size={14} /></button>
+            <button className="p-1.5 text-gray-500 hover:text-white"><HelpCircle size={14} /></button>
+        </div>
+
+        <div className="h-4 w-[1px] bg-white/10 mx-1" />
+
+        <div className="flex items-center gap-1 bg-[#1a1a1a] rounded px-1 ml-2">
+            <Globe size={12} className="text-gray-600 ml-1" />
+            <select 
+                value={language} 
+                onChange={(e) => setLanguage(e.target.value as Language)}
+                className="bg-transparent border-none text-[10px] font-bold text-gray-400 focus:outline-none focus:ring-0 p-1 pr-4 cursor-pointer"
+            >
+                {languages.map(lang => (
+                    <option key={lang.code} value={lang.code} className="bg-[#1a1a1a]">{lang.label}</option>
+                ))}
+            </select>
+        </div>
+
         <button 
-          className={isPlaying ? stopButtonStyle : playButtonStyle} 
-          title={isPlaying ? t('header.stop') : t('header.play')}
-          onClick={onTogglePlay}
-        >
-          {isPlaying ? <StopIcon /> : <PlayIcon />}
-        </button>
-        <button 
-          className={iconButtonStyle} 
-          title={t('header.viewCode')}
-          onClick={onViewCode}
-        >
-          <CodeIcon />
-        </button>
-        <button 
-          className={iconButtonStyle} 
-          title={t('header.save')}
-          onClick={onSave}
-        >
-          <SaveIcon />
-        </button>
-        <button 
-          className={iconButtonStyle} 
-          title={t('header.export')}
           onClick={onExport}
+          className="ml-2 flex items-center gap-2 px-3 h-7 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px] font-bold uppercase transition-all shadow-lg"
+          title={t('header.export')}
         >
-          <ExportIcon />
+          <Download size={12} />
+          <span className="hidden sm:inline">Exportar</span>
         </button>
       </div>
     </header>

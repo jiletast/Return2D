@@ -1,11 +1,12 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { TimelineIcon } from './icons/TimelineIcon';
-import type { Animation, GameAsset, AnimationKeyframe } from '../types';
+import type { Animation, GameAsset, AnimationKeyframe, GameObject } from '../types';
 import { useLanguage } from '../LanguageContext';
 
 interface AnimationEditorProps {
   onClose: () => void;
   onSave: (animations: Animation[]) => void;
+  onCreateObject?: (props: Partial<GameObject>) => void;
   animations: Animation[];
   assets: GameAsset[];
 }
@@ -18,7 +19,7 @@ const CloneIcon: React.FC = () => (
 );
 
 
-const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, animations: initialAnimations, assets }) => {
+const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, onCreateObject, animations: initialAnimations, assets }) => {
   const { t } = useLanguage();
   const [animations, setAnimations] = useState<Animation[]>(initialAnimations);
   const [selectedAnimId, setSelectedAnimId] = useState<string | null>(null);
@@ -29,6 +30,22 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, anim
   
   const [previewFrame, setPreviewFrame] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const dragRef = useRef<{ isDragging: boolean; startX: number; startY: number; initialOffsetX: number; initialOffsetY: number }>({ isDragging: false, startX: 0, startY: 0, initialOffsetX: 0, initialOffsetY: 0 });
+  
+  const handleCreateObjectFromAnim = () => {
+    if (!selectedAnimation || !onCreateObject) return;
+    const firstFrame = selectedAnimation.frames[0];
+    const asset = assets.find(a => a.id === (firstFrame?.assetId || ''));
+    
+    onCreateObject({
+      name: selectedAnimation.name,
+      imageUrl: asset?.url || '',
+      width: 50,
+      height: 50,
+      animations: [selectedAnimation]
+    });
+    onClose();
+  };
   
   useEffect(() => {
     if (!isPlaying || !selectedAnimation || selectedAnimation.frames.length === 0) {
@@ -175,16 +192,48 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, anim
             </aside>
 
             <div className="w-1/2 flex flex-col gap-4">
-                <div className="h-2/3 bg-black/50 rounded-lg flex items-center justify-center relative overflow-hidden" style={{ backgroundSize: '20px 20px', backgroundImage: 'radial-gradient(circle, #374151 1px, rgba(0,0,0,0) 1px)' }}>
+                <div 
+                    className="h-2/3 bg-black/50 rounded-lg flex items-center justify-center relative overflow-hidden cursor-move" 
+                    style={{ backgroundSize: '20px 20px', backgroundImage: 'radial-gradient(circle, #374151 1px, rgba(0,0,0,0) 1px)' }}
+                    onPointerDown={(e) => {
+                        const frame = getFrameData(previewFrame);
+                        if (!frame) return;
+                        dragRef.current = {
+                            isDragging: true,
+                            startX: e.clientX,
+                            startY: e.clientY,
+                            initialOffsetX: frame.x || 0,
+                            initialOffsetY: frame.y || 0
+                        };
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                    }}
+                    onPointerMove={(e) => {
+                        if (!dragRef.current.isDragging || !selectedAnimation) return;
+                        const dx = e.clientX - dragRef.current.startX;
+                        const dy = e.clientY - dragRef.current.startY;
+                        updateFrame(previewFrame, {
+                            x: dragRef.current.initialOffsetX + dx,
+                            y: dragRef.current.initialOffsetY + dy
+                        });
+                    }}
+                    onPointerUp={(e) => {
+                        dragRef.current.isDragging = false;
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                    }}
+                    onPointerCancel={(e) => {
+                        dragRef.current.isDragging = false;
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                    }}
+                >
                    {/* Onion Skin Layers */}
                    {onionSkin.enabled && Array.from({ length: onionSkin.pastFrames }, (_, i) => i + 1).reverse().map(i => (
-                       <img key={`past-${i}`} src={getFrameUrl(previewFrame - i)} style={getFrameStyle(previewFrame - i)} className="absolute max-w-full max-h-full object-contain opacity-20" />
+                       <img draggable={false} key={`past-${i}`} src={getFrameUrl(previewFrame - i)} style={getFrameStyle(previewFrame - i)} className="absolute max-w-full max-h-full object-contain opacity-20 pointer-events-none" />
                    ))}
                    {onionSkin.enabled && Array.from({ length: onionSkin.futureFrames }, (_, i) => i + 1).map(i => (
-                       <img key={`future-${i}`} src={getFrameUrl(previewFrame + i)} style={getFrameStyle(previewFrame + i)} className="absolute max-w-full max-h-full object-contain opacity-20" />
+                       <img draggable={false} key={`future-${i}`} src={getFrameUrl(previewFrame + i)} style={getFrameStyle(previewFrame + i)} className="absolute max-w-full max-h-full object-contain opacity-20 pointer-events-none" />
                    ))}
                    {/* Current Frame */}
-                   <img src={getFrameUrl(previewFrame)} style={getFrameStyle(previewFrame)} alt="Preview" className="relative max-w-full max-h-full object-contain" />
+                   <img draggable={false} src={getFrameUrl(previewFrame)} style={getFrameStyle(previewFrame)} alt="Preview" className="relative max-w-full max-h-full object-contain pointer-events-none" />
 
                    <div className="absolute bottom-2 left-2 flex gap-2">
                         <button onClick={() => setIsPlaying(!isPlaying)} className="p-2 bg-gray-800 rounded-md hover:bg-indigo-600">{isPlaying ? t('common.pause') : t('common.play')}</button>
@@ -246,6 +295,18 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, anim
                              <label>{t('animation.future')}: <input type="number" min="0" value={onionSkin.futureFrames} onChange={e => setOnionSkin(s => ({...s, futureFrames: parseInt(e.target.value, 10)}))} className="w-12 bg-gray-800 p-1 rounded-md" /></label>
                          </div>
                      </div>
+                     <div className="pt-4 border-t border-gray-800">
+                          <button 
+                            onClick={handleCreateObjectFromAnim}
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md text-sm transition-colors flex items-center justify-center gap-2"
+                          >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                              </svg>
+                              Crear Objeto
+                          </button>
+                          <p className="text-[10px] text-gray-500 mt-2 text-center">Crea un objeto en la escena actual con esta animación.</p>
+                      </div>
                  </div> : <p className="p-2 text-sm text-gray-500">{t('animation.selectAnimation')}</p>}
             </aside>
         </main>
@@ -261,6 +322,10 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, anim
                         draggable
                         onDragStart={(e) => handleDragStart(e, index)}
                         onDrop={(e) => handleDrop(e, index)}
+                        onClick={() => {
+                            setPreviewFrame(index);
+                            setIsPlaying(false);
+                        }}
                     >
                         <img src={asset?.url} className="w-16 h-16 object-cover rounded-md pointer-events-none" />
                         <input type="number" value={frame.duration} onChange={e => updateFrame(index, { duration: parseInt(e.target.value, 10) || 0 })} className="w-20 bg-gray-800 text-center rounded text-xs p-0.5" />

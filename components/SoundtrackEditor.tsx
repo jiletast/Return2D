@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { GameAsset } from '../types';
-import { GeminiIcon } from './icons/GeminiIcon';
+import { Sparkles, Music } from 'lucide-react';
 import { MusicNoteIcon } from './icons/MusicNoteIcon';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { useLanguage } from '../LanguageContext';
@@ -325,7 +325,7 @@ const SoundtrackEditor: React.FC<SoundtrackEditorProps> = ({ onClose, onAddAsset
                 
                 <main className="flex-grow p-4 space-y-4 overflow-y-auto">
                     <div className="bg-black/50 p-3 rounded-lg border border-gray-800 space-y-2">
-                         <h3 className="text-md font-semibold text-indigo-300 flex items-center gap-2"><GeminiIcon /> {t('soundtrackEditor.step1')}</h3>
+                         <h3 className="text-md font-semibold text-indigo-300 flex items-center gap-2"><Sparkles size={16} /> {t('soundtrackEditor.step1')}</h3>
                          <input
                             value={mainPrompt}
                             onChange={(e) => setMainPrompt(e.target.value)}

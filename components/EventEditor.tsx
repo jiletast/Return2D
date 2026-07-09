@@ -1,11 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
-import type { GameEvent, Condition, Action, Scene, Animation, Variable, GameAsset } from '../types';
+import type { GameEvent, Condition, Action, Scene, Animation, Variable, GameAsset, GameObject } from '../types';
 import { TrashIcon } from './icons/TrashIcon';
-import { GeminiIcon } from './icons/GeminiIcon';
-import { generateEventLogic } from '../services/geminiService';
 import { EditIcon } from './icons/EditIcon';
 import { useLanguage } from '../LanguageContext';
+import { ScratchBlocksEditor } from './ScratchBlocksEditor';
 
 interface EventEditorProps {
   onClose: () => void;
@@ -15,6 +14,7 @@ interface EventEditorProps {
   scene: Scene | undefined;
   animations: Animation[];
   assets: GameAsset[];
+  globalObjects?: GameObject[];
   globalVariables: Variable[];
   allScenes: Scene[];
 }
@@ -42,6 +42,11 @@ const categorizedTriggerOptions: {
         { value: 'OnJoystickDown', label: 'event.trigger.onJoystickDown' },
         { value: 'OnJoystickLeft', label: 'event.trigger.onJoystickLeft' },
         { value: 'OnJoystickRight', label: 'event.trigger.onJoystickRight' },
+        { value: 'OnButtonDown', label: 'event.trigger.onButtonDown', needsParams: ['buttonName'] },
+        { value: 'OnButtonUp', label: 'event.trigger.onButtonUp', needsParams: ['buttonName'] },
+        { value: 'OnTriggerDown', label: 'event.trigger.onTriggerDown', needsParams: ['triggerName'] },
+        { value: 'OnTriggerUp', label: 'event.trigger.onTriggerUp', needsParams: ['triggerName'] },
+        { value: 'OnConsoleCommand', label: 'event.trigger.onConsoleCommand', needsParams: ['command'] },
     ]},
     { category: 'event.category.collision', options: [
         { value: 'OnCollisionWith', label: 'event.trigger.onCollisionWith', needsTarget: true },
@@ -55,15 +60,28 @@ const categorizedTriggerOptions: {
         { value: 'IsOnGround', label: 'event.trigger.isOnGround' },
         { value: 'IsMoving', label: 'event.trigger.isMoving' },
         { value: 'OnAttack', label: 'event.trigger.onAttack' },
+        { value: 'OnHealthDepleted', label: 'event.trigger.onHealthDepleted' },
+        { value: 'IsClimbing', label: 'Al subir escalera' },
+        { value: 'IsLookingLeft', label: 'Al mirar a la izquierda' },
+        { value: 'IsLookingRight', label: 'Al mirar a la derecha' },
+    ]},
+    { category: 'event.category.system', options: [
+        { value: 'IsMobile', label: '¿Es dispositivo móvil?' },
+        { value: 'IsPC', label: '¿Es PC?' },
     ]},
     { category: 'event.category.variables', options: [
         { value: 'CompareVariable', label: 'event.trigger.compareVariable', needsParams: ['variable', 'operator', 'value']},
+        { value: 'CompareBooleanVariable', label: 'Comparar Variable Booleana', needsParams: ['variable', 'valueBoolean']},
         { value: 'CompareObjectVariable', label: 'event.trigger.compareObjectVariable', needsParams: ['variable', 'operator', 'value']},
+        { value: 'CompareObjectBooleanVariable', label: 'Comparar Variable Booleana de Objeto', needsParams: ['variable', 'valueBoolean']},
         { value: 'CompareStat', label: 'event.trigger.compareStat', needsParams: ['stat', 'operator', 'value']},
     ]},
     { category: 'event.category.time', options: [
         { value: 'OnTimerElapsed', label: 'event.trigger.onTimerElapsed', needsParams: ['timerName'] },
         { value: 'EveryXSeconds', label: 'event.trigger.everyXSeconds', needsParams: ['interval'] },
+    ]},
+    { category: 'event.category.ui', options: [
+        { value: 'OnDialogueEnd', label: 'event.trigger.onDialogueEnd' },
     ]},
     { category: 'event.category.audio', options: [{ value: 'IsMusicPlaying', label: 'event.trigger.isMusicPlaying' }] },
     { category: 'event.category.network', options: [
@@ -86,32 +104,57 @@ const categorizedActionOptions: {
 }[] = [
     { category: 'event.category.object', options: [
         { value: 'Destroy', label: 'event.action.destroy' },
-        { value: 'CreateObject', label: 'event.action.createObject' },
+        { value: 'CreateObject', label: 'event.action.createObject', needsParams: ['templateObjectName'] },
         { value: 'SetObjectPosition', label: 'event.action.setPosition', needsParams: ['x', 'y']},
+        { value: 'TeleportToObject', label: 'Teletransportar a Objeto', needsParams: ['targetObjectName']},
         { value: 'MoveObject', label: 'event.action.moveDirection', needsParams: ['direction', 'speed'] },
+        { value: 'SetVelocityX', label: 'event.action.setVelocityX', needsParams: ['vx'] },
+        { value: 'SetVelocityY', label: 'event.action.setVelocityY', needsParams: ['vy'] },
+        { value: 'MoveTo', label: 'event.action.moveTo', needsParams: ['x', 'y', 'duration'] },
         { value: 'OscillateObject', label: 'event.action.oscillate', needsParams: ['axis', 'distance', 'speed'] },
         { value: 'OscillateScale', label: 'event.action.oscillateScale', needsParams: ['distance', 'speed'] },
         { value: 'RotateContinuously', label: 'event.action.rotateContinuously', needsParams: ['speed'] },
         { value: 'RotateObject', label: 'event.action.rotate', needsParams: ['rotation'] },
+        { value: 'RotateTo', label: 'event.action.rotateTo', needsParams: ['rotation', 'duration'] },
         { value: 'ScaleObject', label: 'event.action.scale', needsParams: ['scaleX', 'scaleY'] },
+        { value: 'ScaleTo', label: 'event.action.scaleTo', needsParams: ['scaleX', 'scaleY', 'duration'] },
         { value: 'SetScale', label: 'event.action.setScale', needsParams: ['scaleX', 'scaleY'] },
+        { value: 'SetVisible', label: 'event.action.setVisible', needsParams: ['visible'] },
+        { value: 'SetOpacity', label: 'event.action.setOpacity', needsParams: ['opacity'] },
+        { value: 'SetZIndex', label: 'event.action.setZIndex', needsParams: ['zIndex'] },
+        { value: 'SetFlipX', label: 'event.action.setFlipX', needsParams: ['flip'] },
+        { value: 'SetFlipY', label: 'event.action.setFlipY', needsParams: ['flip'] },
+        { value: 'SlideTo', label: 'event.action.slideTo', needsParams: ['x', 'y', 'duration'] },
+        { value: 'SetDraggable', label: 'event.action.setDraggable', needsParams: ['enabled', 'lockX', 'lockY', 'minX', 'maxX', 'minY', 'maxY'] },
+        { value: 'EnableCollision', label: 'event.action.enableCollision' },
+        { value: 'DisableCollision', label: 'event.action.disableCollision' },
         { value: 'GenerateObjectAt', label: 'event.action.generateAt', needsParams: ['templateObjectName', 'targetObjectName'] },
         { value: 'ForceJump', label: 'event.action.forceJump', needsParams: ['jumpForce'] },
         { value: 'TriggerAttack', label: 'event.action.triggerAttack' },
+        { value: 'Shoot', label: 'event.action.shoot', needsParams: ['damage', 'speed'] },
+        { value: 'CreatePlayers', label: 'event.action.createPlayers', needsParams: ['count'] },
+        { value: 'DisconnectPlayers', label: 'event.action.disconnectPlayers' },
         { value: 'SetParent', label: 'event.action.setParent', needsParams: ['parentName'] },
+        { value: 'Knockback', label: 'event.action.knockback', needsParams: ['force', 'fromObjectName'] },
     ]},
     { category: 'event.category.visuals', options: [
         { value: 'PlayAnimation', label: 'event.action.playAnimation', needsParams: ['animationId'] },
-        { value: 'PlayVideo', label: 'event.action.playVideo' },
-        { value: 'PauseVideo', label: 'event.action.pauseVideo' },
+        { value: 'PlayVideo', label: 'event.action.playVideo', needsParams: ['videoAssetId'] },
+        { value: 'PauseVideo', label: 'event.action.pauseVideo', needsParams: ['videoAssetId'] },
         { value: 'StopVideo', label: 'event.action.stopVideo' },
     ]},
     { category: 'event.category.variables', options: [
         { value: 'AddToVariable', label: 'event.action.addToVariable', needsParams: ['variable', 'value'] },
         { value: 'SetVariable', label: 'event.action.setVariable', needsParams: ['variable', 'value'] },
+        { value: 'SetBooleanVariable', label: 'Establecer Variable Booleana', needsParams: ['variable', 'valueBoolean'] },
+        { value: 'ToggleBooleanVariable', label: 'Alternar Variable Booleana', needsParams: ['variable'] },
         { value: 'AddToObjectVariable', label: 'event.action.addToObjectVariable', needsParams: ['variable', 'value'] },
         { value: 'SetObjectVariable', label: 'event.action.setObjectVariable', needsParams: ['variable', 'value'] },
+        { value: 'SetObjectBooleanVariable', label: 'Establecer Var. Booleana de Objeto', needsParams: ['variable', 'valueBoolean'] },
+        { value: 'ToggleObjectBooleanVariable', label: 'Alternar Var. Booleana de Objeto', needsParams: ['variable'] },
         { value: 'ModifyStat', label: 'event.action.modifyStat', needsParams: ['stat', 'operation', 'value'] },
+        { value: 'GainHealth', label: 'event.action.gainHealth', needsParams: ['value'] },
+        { value: 'LoseHealth', label: 'event.action.loseHealth', needsParams: ['value'] },
         { value: 'SaveGame', label: 'event.action.saveGame', needsParams: ['slot'] },
         { value: 'LoadGame', label: 'event.action.loadGame', needsParams: ['slot'] },
     ]},
@@ -123,10 +166,11 @@ const categorizedActionOptions: {
     { category: 'event.category.ui', options: [
         { value: 'SetUIText', label: 'event.action.setUIText', needsParams: ['text'] },
         { value: 'ShowDialogue', label: 'event.action.showDialogue', needsParams: ['dialogueText'] },
+        { value: 'ShowConsole', label: 'event.action.showConsole' },
     ]},
     { category: 'event.category.audio', options: [
-        { value: 'PlaySound', label: 'event.action.playSound', needsParams: ['soundId']},
-        { value: 'SetBackgroundMusic', label: 'event.action.setBackgroundMusic', needsParams: ['soundId']},
+        { value: 'PlaySound', label: 'event.action.playSound', needsParams: ['soundId', 'loop']},
+        { value: 'SetBackgroundMusic', label: 'event.action.setBackgroundMusic', needsParams: ['soundId', 'loop']},
         { value: 'PauseBackgroundMusic', label: 'event.action.pauseBackgroundMusic' },
         { value: 'ResumeBackgroundMusic', label: 'event.action.resumeBackgroundMusic' },
         { value: 'StopBackgroundMusic', label: 'event.action.stopBackgroundMusic' },
@@ -135,6 +179,7 @@ const categorizedActionOptions: {
     { category: 'event.category.time', options: [
         { value: 'StartTimer', label: 'event.action.startTimer', needsParams: ['timerName', 'duration'] },
         { value: 'StopTimer', label: 'event.action.stopTimer', needsParams: ['timerName'] },
+        { value: 'Wait', label: 'Esperar X segundos', needsParams: ['duration'] },
     ]},
     { category: 'event.category.rpg', options: [
         { value: 'SetQuestState', label: 'event.action.setQuestState', needsParams: ['questId', 'questState'] },
@@ -186,46 +231,34 @@ const SelectorModal: React.FC<{
     );
 };
 
-const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDeleteEvent, onUpdateEvent, scene, animations, assets, globalVariables, allScenes }) => {
+const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDeleteEvent, onUpdateEvent, scene, animations, assets, globalObjects, globalVariables, allScenes }) => {
   const { t } = useLanguage();
+  const [programmingMode, setProgrammingMode] = useState<'events' | 'blocks'>('blocks');
+  const [activeTab, setActiveTab] = useState<'2D' | '3D'>('2D');
+  const [eventDimension, setEventDimension] = useState<'2D' | '3D'>('2D');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [conditions, setConditions] = useState<Partial<Condition>[]>([{}]);
   const [actions, setActions] = useState<Partial<Action>[]>([{}]);
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationError, setGenerationError] = useState<string | null>(null);
   const [selectorOpen, setSelectorOpen] = useState<{type: 'condition' | 'action', index: number} | null>(null);
   
   const objectNames = useMemo(() => scene?.gameObjects.map(obj => obj.name) ?? [], [scene]);
+  const globalObjectNames = useMemo(() => globalObjects?.map(obj => obj.name) ?? [], [globalObjects]);
+  const templateObjectNames = useMemo(() => {
+      const names = new Set([...objectNames, ...globalObjectNames]);
+      return Array.from(names);
+  }, [objectNames, globalObjectNames]);
   const audioAssets = useMemo(() => assets.filter(a => a.type === 'audio'), [assets]);
+  const videoAssets = useMemo(() => assets.filter(a => a.type === 'video'), [assets]);
   const globalVariableNames = useMemo(() => globalVariables.map(v => v.name), [globalVariables]);
   const sceneNames = useMemo(() => allScenes.map(s => s.name), [allScenes]);
+  const standardEvents = useMemo(() => {
+    return (scene?.events || []).filter(e => !e.programmingMode || e.programmingMode === 'events');
+  }, [scene?.events]);
 
-  const handleGenerateWithAI = async () => {
-    if (!aiPrompt.trim()) return;
-
-    setIsGenerating(true);
-    setGenerationError(null);
-
-    try {
-        const result = await generateEventLogic(aiPrompt);
-        if (result.events && result.events.length > 0) {
-            result.events.forEach(onAddEvent);
-            setAiPrompt('');
-        } else {
-            setGenerationError(t('event.aiNoEvents'));
-        }
-    } catch (error) {
-        console.error("AI Generation Error:", error);
-        setGenerationError(error instanceof Error ? t('event.aiError', { error: error.message }) : t('event.aiError', { error: 'Unknown' }));
-    } finally {
-        setIsGenerating(false);
-    }
-  };
-  
   const handleEditEvent = (event: GameEvent) => {
     setEditingEventId(event.id);
+    setEventDimension(event.dimension || '2D');
     // Deep copy to avoid mutating the original state directly
     setConditions(JSON.parse(JSON.stringify(event.conditions)));
     setActions(JSON.parse(JSON.stringify(event.actions)));
@@ -234,6 +267,7 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
   
   const handleAddNewEventClick = () => {
     setEditingEventId(null);
+    setEventDimension(activeTab);
     setConditions([{}]);
     setActions([{}]);
     setIsFormOpen(true);
@@ -250,6 +284,8 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
     const finalEventData = {
         conditions: conditions.filter(c => c.object && c.trigger) as Condition[],
         actions: actions.filter(a => a.object && a.action) as Action[],
+        dimension: eventDimension,
+        programmingMode: 'events' as const
     };
 
     if (finalEventData.conditions.length === 0 || finalEventData.actions.length === 0) {
@@ -298,7 +334,7 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
         return <div key="create-obj-params" className="w-full bg-gray-700/50 p-2 rounded-md mt-1 space-y-2">
             <select className="input-field w-full" value={item.params?.templateObjectName ?? ''} onChange={e => updateParams({templateObjectName: e.target.value})}>
                 <option value="">{t('event.selectTemplate')}</option>
-                {objectNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
+                {templateObjectNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
             </select>
             <div className="flex gap-4 text-sm">
                 <label><input type="radio" value="absolute" checked={positionType === 'absolute'} onChange={() => updateParams({positionType: 'absolute'})} /> {t('event.absolutePosition')}</label>
@@ -313,7 +349,7 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
                 <div className="space-y-2">
                     <select className="input-field w-full" value={item.params?.relativeToObjectName ?? ''} onChange={e => updateParams({relativeToObjectName: e.target.value})}>
                         <option value="">{t('event.selectRelativeObject')}</option>
-                        {objectNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
+                        {templateObjectNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
                     </select>
                     <div className="flex gap-2">
                         <input type="number" placeholder="Offset X" className="input-field w-1/2" value={item.params?.offsetX ?? ''} onChange={e => updateParams({offsetX: e.target.value})} />
@@ -338,16 +374,42 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
                     <option value="">{t('event.selectSound')}</option>
                     {audioAssets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
                 </select>);
+            case 'loop': {
+                const defaultValue = key === 'PlaySound' ? 'false' : 'true';
+                const currentValue = item.params?.[param] !== undefined ? String(item.params?.[param]) : defaultValue;
+                return (
+                    <select key={param} className="input-field" value={currentValue} onChange={e => updateParams({[param]: e.target.value === 'true'})}>
+                        <option value="true">{t('event.loop.yes') || 'Bucle: Sí'}</option>
+                        <option value="false">{t('event.loop.no') || 'Bucle: No'}</option>
+                    </select>
+                );
+            }
+            case 'videoAssetId':
+                return ( <select key={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
+                    <option value="">{t('event.selectVideo') || 'Seleccionar Video'}</option>
+                    {videoAssets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                </select>);
             case 'variable':
-                if (key === 'CompareVariable' || key === 'AddToVariable' || key === 'SetVariable') {
-                    return ( <select key={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
-                        <option value="">{t('event.globalVariable')}</option>
-                        {globalVariableNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
-                    </select>);
+                if (key === 'CompareVariable' || key === 'AddToVariable' || key === 'SetVariable' || key === 'SetBooleanVariable' || key === 'ToggleBooleanVariable' || key === 'CompareBooleanVariable') {
+                    return (
+                        <div key={param} className="flex gap-1">
+                            <input 
+                                list={`vars-${key}`}
+                                type="text" 
+                                placeholder={t('event.globalVariable') || 'Variable Global'} 
+                                className="input-field min-w-[120px]" 
+                                value={item.params?.[param] ?? ''} 
+                                onChange={e => updateParams({[param]: e.target.value})} 
+                            />
+                            <datalist id={`vars-${key}`}>
+                                {globalVariableNames.map((name, index) => <option key={`${name}-${index}`} value={name} />)}
+                            </datalist>
+                        </div>
+                    );
                 }
                 return <input key={param} type="text" placeholder={t('event.variableName')} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
             case 'operator':
-                 return ( <select key={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
+                 return ( <select key={param} className="input-field" value={item.params?.[param] ?? '=='} onChange={e => updateParams({[param]: e.target.value})}>
                     <option value="==">== ({t('properties.operator.equal') || 'igual a'})</option>
                     <option value="!=">!= ({t('properties.operator.notEqual') || 'no es igual'})</option>
                     <option value=">">&gt; ({t('properties.operator.greaterThan') || 'mayor que'})</option>
@@ -355,6 +417,21 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
                     <option value=">=">&gt;= ({t('properties.operator.greaterEqual') || 'mayor/igual'})</option>
                     <option value="<=">&lt;= ({t('properties.operator.lessEqual') || 'menor/igual'})</option>
                 </select>);
+            case 'duration':
+                return <input key={param} type="number" step="any" placeholder="Duración (segundos)" className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value === '' ? '' : Number(e.target.value)})} />;
+            case 'value':
+                // For variables, value often is a number
+                if (key === 'CompareVariable' || key === 'AddToVariable' || key === 'SetVariable') {
+                    return <input key={param} type="text" placeholder={t('properties.value') || 'Valor'} className="input-field min-w-[60px]" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
+                }
+                return <input key={param} type="text" placeholder={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
+            case 'valueBoolean':
+                return (
+                    <select key={param} className="input-field" value={String(item.params?.[param] ?? true)} onChange={e => updateParams({[param]: e.target.value === 'true'})}>
+                        <option value="true">Verdadero (True)</option>
+                        <option value="false">Falso (False)</option>
+                    </select>
+                );
             case 'sceneName':
                 return ( <select key={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
                     <option value="">{t('event.selectScene')}</option>
@@ -383,7 +460,16 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
             case 'parentName':
                 return ( <select key={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
                     <option value="">{t('event.none')}</option>
-                    {objectNames.map(name => <option key={name} value={name}>{name}</option>)}
+                    {templateObjectNames.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>);
+            case 'visible':
+            case 'flip':
+            case 'enabled':
+            case 'lockX':
+            case 'lockY':
+                return ( <select key={param} className="input-field" value={item.params?.[param] ?? 'true'} onChange={e => updateParams({[param]: e.target.value === 'true'})}>
+                    <option value="true">{t('common.yes') || 'Sí'}</option>
+                    <option value="false">{t('common.no') || 'No'}</option>
                 </select>);
             case 'direction':
                 return ( <select key={param} className="input-field" value={item.params?.[param] ?? 'right'} onChange={e => updateParams({[param]: e.target.value})}>
@@ -399,10 +485,15 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
                 </select>);
             case 'color':
                 return <input key={param} type="color" className="input-field h-8" value={item.params?.[param] ?? '#000000'} onChange={e => updateParams({[param]: e.target.value})} />;
+            case 'opacity':
+                return <input key={param} type="number" placeholder="0-1" step="0.1" min="0" max="1" className="input-field w-20" value={item.params?.[param] ?? '1'} onChange={e => updateParams({[param]: e.target.value})} />;
             case 'x':
             case 'y':
+            case 'vx':
+            case 'vy':
             case 'maxPlayers':
             case 'slot':
+            case 'zIndex':
             case 'zoomLevel':
             case 'speed':
             case 'distance':
@@ -412,12 +503,71 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
             case 'rotation':
             case 'scaleX':
             case 'scaleY':
+            case 'minX':
+            case 'maxX':
+            case 'minY':
+            case 'maxY':
                 return <input key={param} type="number" placeholder={param} className="input-field w-20" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
+            case 'buttonName':
+                return (
+                    <div key={param} className="flex flex-col gap-1 w-full">
+                        <select className="input-field w-full" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
+                            <option value="">{t('event.selectButton') || 'Seleccionar Botón'}</option>
+                            <optgroup label="Nintendo / Universal">
+                                <option value="A">Boton A (Confirmar)</option>
+                                <option value="B">Boton B (Cancelar)</option>
+                                <option value="X">Boton X (Menú)</option>
+                                <option value="Y">Boton Y (Acción)</option>
+                            </optgroup>
+                            <optgroup label="D-Pad / Cruzeta">
+                                <option value="DpadUp">Arriba (D-Pad)</option>
+                                <option value="DpadDown">Abajo (D-Pad)</option>
+                                <option value="DpadLeft">Izquierda (D-Pad)</option>
+                                <option value="DpadRight">Derecha (D-Pad)</option>
+                            </optgroup>
+                            <optgroup label="Hombros">
+                                <option value="L">L (Nintendo)</option>
+                                <option value="R">R (Nintendo)</option>
+                                <option value="ZL">ZL (Nintendo)</option>
+                                <option value="ZR">ZR (Nintendo)</option>
+                                <option value="L1">L1 (PS/Xbox)</option>
+                                <option value="R1">R1 (PS/Xbox)</option>
+                                <option value="L2">L2 (PS/Xbox)</option>
+                                <option value="R2">R2 (PS/Xbox)</option>
+                            </optgroup>
+                            <optgroup label="Sistema">
+                                <option value="Plus">Plus (+)</option>
+                                <option value="Minus">Minus (-)</option>
+                                <option value="Home">Home (Casa)</option>
+                                <option value="Capture">Captura</option>
+                                <option value="Start">Start</option>
+                                <option value="Select">Select</option>
+                            </optgroup>
+                            <option value="custom">-- Otro (escribir ID) --</option>
+                        </select>
+                        {item.params?.[param] === 'custom' && (
+                             <input type="text" placeholder="button_X" className="input-field mt-1" onChange={e => updateParams({[param]: e.target.value})} />
+                        )}
+                    </div>
+                );
+            case 'triggerName':
+                return (
+                    <select key={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
+                         <option value="L2">ZL / L2</option>
+                         <option value="R2">ZR / R2</option>
+                    </select>
+                );
             case 'templateObjectName':
             case 'targetObjectName':
                 return ( <select key={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
                     <option value="">{t('event.selectObject')}</option>
-                    {objectNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
+                    {templateObjectNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
+                </select>);
+            case 'fromObjectName':
+                return ( <select key={param} className="input-field text-indigo-400 font-semibold" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
+                    <option value="">-- Origen del Empuje --</option>
+                    <option value="Self">Self (Este Objeto)</option>
+                    {templateObjectNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
                 </select>);
             case 'volume':
                 return <input key={param} type="number" placeholder="Volumen (0-100)" className="input-field" min="0" max="100" value={item.params?.[param] ?? '100'} onChange={e => updateParams({[param]: e.target.value})} />;
@@ -462,131 +612,164 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
             .input-field { background-color: #1f2937; border: 1px solid #374151; border-radius: 0.375rem; padding: 0.25rem 0.5rem; font-size: 0.875rem; }
         `}</style>
         <header className="flex items-center justify-between p-4 border-b border-gray-800 shrink-0">
-          <h2 className="text-xl font-bold">{t('event.editorTitle')}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">&times;</button>
+          <div className="flex items-center gap-4 sm:gap-6">
+            <h2 className="text-lg sm:text-xl font-bold">{t('event.editorTitle')}</h2>
+            <div className="bg-black/40 border border-white/10 rounded-lg p-0.5 flex">
+              <button
+                onClick={() => {
+                  setIsFormOpen(false);
+                  setProgrammingMode('events');
+                }}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                  programmingMode === 'events'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                Lista de Eventos
+              </button>
+              <button
+                onClick={() => {
+                  setIsFormOpen(false);
+                  setProgrammingMode('blocks');
+                }}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                  programmingMode === 'blocks'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-ping"></span>
+                Bloques Visuales (Scratch)
+              </button>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
         </header>
         
-        <main className="flex-grow p-4 overflow-y-auto space-y-4">
-            <div className="bg-black/50 p-4 rounded-lg border border-gray-800">
-              <h3 className="text-lg font-semibold text-indigo-300 mb-2 flex items-center gap-2">
-                <GeminiIcon />
-                {t('event.generateLogicAI')}
-              </h3>
-              <p className="text-sm text-gray-400 mb-3">
-                {t('event.aiDescription')}
-              </p>
-              <textarea
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder={t('event.aiPlaceholder')}
-                className="w-full h-20 p-2 rounded-md bg-gray-800 border border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
-                disabled={isGenerating}
-              />
-              <div className="flex items-center justify-end mt-3 gap-4">
-                {generationError && <span className="text-red-400 text-sm">{generationError}</span>}
-                <button 
-                  onClick={handleGenerateWithAI}
-                  disabled={isGenerating || !aiPrompt.trim()}
-                  className="px-4 py-2 bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-gray-700 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isGenerating ? (
-                    <>
-                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      {t('event.generating')}
-                    </>
-                  ) : t('event.generateWithAI')}
-                </button>
-              </div>
-            </div>
-            {!isFormOpen && scene?.events.map((event, index) => (
-            <div key={event.id || index} className="bg-black/50 p-3 rounded-lg border border-gray-800 relative group">
-              <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                 <button 
-                  onClick={() => handleEditEvent(event)} 
-                  title={t('event.editEvent')} 
-                  className="p-1.5 bg-gray-700/80 rounded-full text-gray-300 hover:bg-indigo-600"
-                 >
-                    <EditIcon />
-                </button>
-                <button 
-                  onClick={() => onDeleteEvent(event.id)} 
-                  title={t('event.deleteEvent')} 
-                  className="p-1.5 bg-red-900/50 rounded-full text-red-300 hover:bg-red-700"
-                >
-                  <TrashIcon />
-                </button>
-              </div>
-              <div className="flex gap-4">
-                <div className="w-1/2 space-y-2">
-                  <h4 className="text-xs uppercase font-bold text-red-400 tracking-wider">{t('event.conditions')}</h4>
-                  {event.conditions.map((cond, cIndex) => <div key={cIndex} className="text-sm bg-red-900/50 p-2 rounded-md">{`${cond.object} ${t(triggerOptions.find(o => o.value === cond.trigger)?.label || '')} ${cond.target || ''}`}</div>)}
-                </div>
-                <div className="w-1/2 space-y-2">
-                  <h4 className="text-xs uppercase font-bold text-blue-400 tracking-wider">{t('event.actions')}</h4>
-                  {event.actions.map((act, aIndex) => <div key={aIndex} className="text-sm bg-blue-900/50 p-2 rounded-md">{`${act.object} ${t(actionOptions.find(o => o.value === act.action)?.label || '')}`}</div>)}
-                </div>
-              </div>
-            </div>
-            ))}
-            {isFormOpen && (
-                <div className="bg-black/50 p-4 rounded-lg border border-indigo-500">
-                    <h3 className="font-bold mb-4 text-lg text-indigo-300">{editingEventId ? t('event.editEvent') : t('event.createEvent')}</h3>
-                    <div className="flex gap-4">
-                         <div className="w-1/2 space-y-3">
-                            <h4 className="font-semibold text-red-400">{t('event.conditionsWhen')}</h4>
-                            {conditions.map((cond, i) => (
-                                <div key={i} className="flex gap-1 items-start flex-wrap p-2 bg-gray-800/50 rounded-md">
-                                    <select className="input-field" value={cond.object ?? ''} onChange={e => updateCondition(i, { object: e.target.value })}>
-                                        <option value="">{t('event.selectObject')}</option>
-                                        {['System', ...objectNames].map((name, index) => <option key={`${name}-${index}`} value={name}>{name === 'System' ? t('properties.system') : name}</option>)}
-                                    </select>
-                                    <button onClick={() => setSelectorOpen({type: 'condition', index: i})} className="input-field text-left flex-grow min-w-[120px] hover:bg-gray-600">
-                                        {t(triggerOptions.find(opt => opt.value === cond.trigger)?.label || 'event.selectTrigger')}
-                                    </button>
-                                    {triggerOptions.find(o => o.value === cond.trigger)?.needsTarget && 
-                                      <select className="input-field" value={cond.target ?? ''} onChange={e => updateCondition(i, { target: e.target.value })}>
-                                        <option value="">{t('event.selectTarget')}</option>
-                                        {objectNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
-                                      </select>}
-                                    {renderParamInput('condition', cond, i)}
-                                </div>
-                            ))}
-                         </div>
-                         <div className="w-1/2 space-y-3">
-                            <h4 className="font-semibold text-blue-400">{t('event.actionsDo')}</h4>
-                            {actions.map((act, i) => (
-                                <div key={i} className="flex gap-1 items-start flex-wrap p-2 bg-gray-800/50 rounded-md">
-                                    <select className="input-field" value={act.object ?? ''} onChange={e => updateAction(i, { object: e.target.value })}>
-                                        <option value="">{t('event.selectObject')}</option>
-                                        {['System', ...objectNames].map((name, index) => <option key={`${name}-${index}`} value={name}>{name === 'System' ? t('properties.system') : name}</option>)}
-                                    </select>
-                                    <button onClick={() => setSelectorOpen({type: 'action', index: i})} className="input-field text-left flex-grow min-w-[120px] hover:bg-gray-600">
-                                        {t(actionOptions.find(opt => opt.value === act.action)?.label || 'event.selectAction')}
-                                    </button>
-                                    {renderParamInput('action', act, i)}
-                                </div>
-                            ))}
-                         </div>
+        {programmingMode === 'blocks' ? (
+          <div className="flex-grow min-h-0 overflow-hidden">
+            <ScratchBlocksEditor
+              scene={scene}
+              animations={animations}
+              assets={assets}
+              globalObjects={globalObjects}
+              globalVariables={globalVariables}
+              allScenes={allScenes}
+              onAddEvent={onAddEvent}
+              onDeleteEvent={onDeleteEvent}
+              onUpdateEvent={onUpdateEvent}
+            />
+          </div>
+        ) : (
+          <>
+            <main className="flex-grow p-4 overflow-y-auto space-y-4">
+                {/* Simplified for 2D only */}
+                {!isFormOpen && standardEvents.map((event, index) => (
+                <div key={event.id || index} className="bg-black/50 p-3 rounded-lg border border-gray-800 relative group">
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                     <button 
+                      onClick={() => handleEditEvent(event)} 
+                      title={t('event.editEvent')} 
+                      className="p-1.5 bg-gray-700/80 rounded-full text-gray-300 hover:bg-indigo-600"
+                     >
+                        <EditIcon />
+                    </button>
+                    <button 
+                      onClick={() => onDeleteEvent(event.id)} 
+                      title={t('event.deleteEvent')} 
+                      className="p-1.5 bg-red-900/50 rounded-full text-red-300 hover:bg-red-700"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-1/2 space-y-2">
+                      <h4 className="text-xs uppercase font-bold text-red-400 tracking-wider">{t('event.conditions')}</h4>
+                      {event.conditions.map((cond, cIndex) => <div key={cIndex} className="text-sm bg-red-900/50 p-2 rounded-md">{`${cond.object} ${t(triggerOptions.find(o => o.value === cond.trigger)?.label || '')} ${cond.target || ''}`}</div>)}
                     </div>
+                    <div className="w-1/2 space-y-2">
+                      <h4 className="text-xs uppercase font-bold text-blue-400 tracking-wider">{t('event.actions')}</h4>
+                      {event.actions.map((act, aIndex) => <div key={aIndex} className="text-sm bg-blue-900/50 p-2 rounded-md">{`${act.object} ${t(actionOptions.find(o => o.value === act.action)?.label || '')}`}</div>)}
+                    </div>
+                  </div>
                 </div>
-            )}
-        </main>
-        
-        <footer className="p-4 border-t border-gray-800 shrink-0">
-           {isFormOpen ? (
-               <div className="flex justify-end gap-2">
-                   <button onClick={handleCancel} className="px-4 py-2 bg-gray-700 rounded-md hover:bg-gray-800">{t('common.cancel')}</button>
-                   <button onClick={handleSaveEvent} className="px-4 py-2 bg-indigo-600 rounded-md hover:bg-indigo-700">{t('event.saveEvent')}</button>
-               </div>
-           ) : (
-                <button onClick={handleAddNewEventClick} className="px-4 py-2 bg-indigo-600 rounded-md hover:bg-indigo-700">
-                    {t('event.addNewEvent')}
-                </button>
-           )}
-        </footer>
+                ))}
+
+                {!isFormOpen && standardEvents.length === 0 && (
+                  <div className="text-center py-8 text-gray-500 text-xs italic bg-gray-850/40 border border-dashed border-gray-800 rounded-lg">
+                    No hay eventos creados para esta escena. ¡Haz clic en "+ Añadir Evento" para crear uno!
+                  </div>
+                )}
+
+                {isFormOpen && (
+                    <div className="bg-black/50 p-4 rounded-lg border border-indigo-500">
+                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-800">
+                            <h3 className="font-bold text-lg text-indigo-300">{editingEventId ? t('event.editEvent') : t('event.createEvent')}</h3>
+                        </div>
+                        <div className="flex gap-4">
+                             <div className="w-1/2 space-y-3">
+                                <h4 className="font-semibold text-red-400">{t('event.conditionsWhen')}</h4>
+                                {conditions.map((cond, i) => (
+                                    <div key={i} className="flex gap-1 items-start flex-wrap p-2 bg-gray-800/50 rounded-md">
+                                        <select className="input-field" value={cond.object ?? ''} onChange={e => updateCondition(i, { object: e.target.value })}>
+                                            <option value="">{t('event.selectObject')}</option>
+                                            {['System', ...templateObjectNames].map((name, index) => <option key={`${name}-${index}`} value={name}>{name === 'System' ? t('properties.system') : name}</option>)}
+                                        </select>
+                                        <button onClick={() => setSelectorOpen({type: 'condition', index: i})} className="input-field text-left flex-grow min-w-[120px] hover:bg-gray-600">
+                                            {t(triggerOptions.find(opt => opt.value === cond.trigger)?.label || 'event.selectTrigger')}
+                                        </button>
+                                        <button onClick={() => setConditions(conditions.filter((_, idx) => idx !== i))} className="p-2 bg-red-900/50 rounded-md text-red-300 hover:bg-red-700">
+                                            <TrashIcon />
+                                        </button>
+                                        {triggerOptions.find(o => o.value === cond.trigger)?.needsTarget && 
+                                          <select className="input-field" value={cond.target ?? ''} onChange={e => updateCondition(i, { target: e.target.value })}>
+                                            <option value="">{t('event.selectTarget')}</option>
+                                            {templateObjectNames.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
+                                          </select>}
+                                        {renderParamInput('condition', cond, i)}
+                                    </div>
+                                ))}
+                                <button onClick={() => setConditions([...conditions, {}])} className="w-full py-2 bg-gray-800 rounded-md hover:bg-gray-700 text-sm font-medium text-gray-300">+ Añadir condición</button>
+                             </div>
+                             <div className="w-1/2 space-y-3">
+                                <h4 className="font-semibold text-blue-400">{t('event.actionsDo')}</h4>
+                                {actions.map((act, i) => (
+                                    <div key={i} className="flex gap-1 items-start flex-wrap p-2 bg-gray-800/50 rounded-md">
+                                        <select className="input-field" value={act.object ?? ''} onChange={e => updateAction(i, { object: e.target.value })}>
+                                            <option value="">{t('event.selectObject')}</option>
+                                            {['System', ...templateObjectNames].map((name, index) => <option key={`${name}-${index}`} value={name}>{name === 'System' ? t('properties.system') : name}</option>)}
+                                        </select>
+                                        <button onClick={() => setSelectorOpen({type: 'action', index: i})} className="input-field text-left flex-grow min-w-[120px] hover:bg-gray-600">
+                                            {t(actionOptions.find(opt => opt.value === act.action)?.label || 'event.selectAction')}
+                                        </button>
+                                        <button onClick={() => setActions(actions.filter((_, idx) => idx !== i))} className="p-2 bg-red-900/50 rounded-md text-red-300 hover:bg-red-700">
+                                            <TrashIcon />
+                                        </button>
+                                        {renderParamInput('action', act, i)}
+                                    </div>
+                                ))}
+                                <button onClick={() => setActions([...actions, {}])} className="w-full py-2 bg-gray-800 rounded-md hover:bg-gray-700 text-sm font-medium text-gray-300">+ Añadir acción</button>
+                             </div>
+                        </div>
+                    </div>
+                )}
+            </main>
+            
+            <footer className="p-4 border-t border-gray-800 shrink-0">
+               {isFormOpen ? (
+                   <div className="flex justify-end gap-2">
+                       <button onClick={handleCancel} className="px-4 py-2 bg-gray-700 rounded-md hover:bg-gray-800">{t('common.cancel')}</button>
+                       <button onClick={handleSaveEvent} className="px-4 py-2 bg-indigo-600 rounded-md hover:bg-indigo-700">{t('event.saveEvent')}</button>
+                   </div>
+               ) : (
+                    <button onClick={handleAddNewEventClick} className="px-4 py-2 bg-indigo-600 rounded-md hover:bg-indigo-700">
+                        {t('event.addNewEvent')}
+                    </button>
+               )}
+            </footer>
+          </>
+        )}
       </div>
     </div>
   );

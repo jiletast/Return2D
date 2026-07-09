@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { GameAsset } from '../types';
-import { GeminiIcon } from './icons/GeminiIcon';
+import { Sparkles } from 'lucide-react';
 import { GoogleGenAI, Modality } from '@google/genai';
 
 interface AudioLabProps {
@@ -135,7 +135,7 @@ const AudioLab: React.FC<AudioLabProps> = ({ onClose, onAddAsset }) => {
       <div className="bg-gray-900 rounded-lg shadow-2xl w-full max-w-2xl flex flex-col border border-gray-800" onClick={e => e.stopPropagation()}>
         <header className="flex items-center justify-between p-4 border-b border-gray-800 shrink-0">
           <h2 className="text-xl font-bold flex items-center gap-2">
-            <GeminiIcon />
+            <Sparkles className="text-indigo-400" size={20} />
             Laboratorio de Sonido
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl font-bold">&times;</button>

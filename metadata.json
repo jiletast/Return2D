@@ -1,5 +1,5 @@
 {
-  "name": "Cc Return 2D game Engine",
-  "description": "A visual 2D game engine prototype that uses AI to generate game logic from natural language. Design game scenes, manage assets, and create events without writing any code. Features a mock-up of subscription plans.",
+  "name": "Return 2D Engine",
+  "description": "Professional 2D Game Engine. Design, build and export high-performance 2D games with a visual Godot/Unity-style editor. Features advanced scene management, asset pipeline, visual scripting, and cross-platform export.",
   "requestFramePermissions": []
 }
