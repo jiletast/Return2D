@@ -134,6 +134,8 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
   const [joystickData, setJoystickData] = useState<{x: number, y: number} | null>(null);
   const draggingRef = useRef<{ id: number; offsetX: number; offsetY: number } | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+  const [activeInteractable, setActiveInteractable] = useState<{ id: number; name: string; prompt: string } | null>(null);
+  const activeInteractableRef = useRef<{ id: number; name: string; prompt: string } | null>(null);
 
   const playShootSynthSound = () => {
       try {
@@ -203,6 +205,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
   
   const frameCollisions = useRef<{obj1Name: string, obj2Name: string, type: string, obj1Id: number, obj2Id: number}[]>([]);
   const frameClicks = useRef<{name: string, id: number}[]>([]);
+  const frameInteractions = useRef<{name: string, id: number}[]>([]);
   const frameJoystickEvents = useRef<string[]>([]);
   const frameTimerEvents = useRef<string[]>([]);
   const frameAttacks = useRef<{name: string, id: number}[]>([]);
@@ -360,6 +363,12 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
               if (params?.sceneName) {
                   sceneChangeRequested.current = true;
                   onGoToScene(params.sceneName);
+              }
+              break;
+          case 'SetSceneUnlocked':
+              if (params?.sceneName) {
+                  const unlocked = params.valueBoolean !== false;
+                  gameVariables.current['scene_unlocked_' + params.sceneName] = unlocked;
               }
               break;
           case 'CreateMatch':
@@ -1118,6 +1127,13 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
             });
         case 'OnObjectClicked':
             return obj ? frameClicks.current.some(c => c.id === obj.id) : frameClicks.current.some(c => c.name === cond.object);
+        case 'OnInteract':
+            return obj ? frameInteractions.current.some(c => c.id === obj.id) : frameInteractions.current.some(c => c.name === cond.object);
+        case 'IsSceneUnlocked':
+            if (cond.params?.sceneName) {
+                return !!gameVariables.current['scene_unlocked_' + cond.params.sceneName];
+            }
+            return false;
         case 'OnKeyPress':
             return cond.params?.key && frameKeyPresses.current.includes(cond.params.key.toLowerCase());
         case 'OnAnyKeyPress':
@@ -1439,6 +1455,12 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
         if (consoleOpen) return;
         const key = e.key.toLowerCase();
         const code = e.code.toLowerCase();
+        if (key === 'e' && activeInteractableRef.current) {
+            frameInteractions.current.push({
+                id: activeInteractableRef.current.id,
+                name: activeInteractableRef.current.name
+            });
+        }
         if (!keysPressed.current[key] && !keysPressed.current[code]) {
             frameKeyPresses.current.push(key);
             frameKeyPresses.current.push(code);
@@ -2724,10 +2746,41 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
           }
       }
 
+      // Check for interactables near player
+      const playerObjForInteract = gameObjectsRef.current.find(o => o.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement'));
+      let currentActiveInteractable: { id: number; name: string; prompt: string } | null = null;
+      
+      if (playerObjForInteract) {
+          const interactables = gameObjectsRef.current.filter(o => o.behaviors?.some(b => b.name === 'Interactable'));
+          let minDistance = Infinity;
+          for (const item of interactables) {
+              const dx = item.x - playerObjForInteract.x;
+              const dy = item.y - playerObjForInteract.y;
+              const dist = Math.hypot(dx, dy);
+              const interactBehav = item.behaviors?.find(b => b.name === 'Interactable');
+              const radius = Number(interactBehav?.properties?.radius || 60);
+              
+              if (dist <= radius && dist < minDistance) {
+                  minDistance = dist;
+                  currentActiveInteractable = {
+                      id: item.id,
+                      name: item.name,
+                      prompt: String(interactBehav?.properties?.prompt || 'Interactuar [E]')
+                  };
+              }
+          }
+      }
+      
+      if (activeInteractableRef.current?.id !== currentActiveInteractable?.id) {
+          activeInteractableRef.current = currentActiveInteractable;
+          setActiveInteractable(currentActiveInteractable);
+      }
+
       evaluateEvents(deltaTime);
       frameKeyPresses.current = [];
       frameCollisions.current = [];
       frameClicks.current = [];
+      frameInteractions.current = [];
       frameTimerEvents.current = [];
       frameAttacks.current = [];
       frameDialogueEnd.current = false;
@@ -3604,10 +3657,14 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                       [joystick.position || 'left']: '40px',
                       width: `${joystickSize}px`,
                       height: `${joystickSize}px`,
-                      backgroundColor: `rgba(255, 255, 255, ${joystick.opacity ?? 0.1})`,
+                      backgroundColor: joystick.backgroundImageUrl ? 'transparent' : `rgba(255, 255, 255, ${joystick.opacity ?? 0.1})`,
+                      backgroundImage: joystick.backgroundImageUrl ? `url(${joystick.backgroundImageUrl})` : 'none',
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
                       borderRadius: '50%',
                       pointerEvents: 'auto',
-                      userSelect: 'none'
+                      userSelect: 'none',
+                      zIndex: 999
                   }}
               >
                   <div 
@@ -3616,13 +3673,74 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                           position: 'absolute',
                           width: `${joystickHandleSize}px`,
                           height: `${joystickHandleSize}px`,
-                          backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                          backgroundColor: joystick.handleImageUrl ? 'transparent' : 'rgba(255, 255, 255, 0.3)',
+                          backgroundImage: joystick.handleImageUrl ? `url(${joystick.handleImageUrl})` : 'none',
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
                           borderRadius: '50%',
                           left: `calc(50% - ${joystickHandleSize / 2}px)`,
                           top: `calc(50% - ${joystickHandleSize / 2}px)`,
                           transition: 'transform 50ms linear'
                       }}/>
               </div>
+            )}
+            {activeInteractable && (
+                <>
+                    {/* Visual Prompt Bubble */}
+                    <div 
+                        className="absolute bottom-1/4 left-1/2 -translate-x-1/2 bg-indigo-950/90 border border-indigo-400 text-indigo-100 font-bold px-4 py-2 rounded-full shadow-2xl text-xs flex items-center gap-2 animate-pulse pointer-events-auto cursor-pointer select-none z-50"
+                        onClick={() => {
+                            if (activeInteractableRef.current) {
+                                frameInteractions.current.push({
+                                    id: activeInteractableRef.current.id,
+                                    name: activeInteractableRef.current.name
+                                });
+                            }
+                        }}
+                    >
+                        <span className="bg-indigo-500 text-white rounded-full w-5 h-5 flex items-center justify-center font-mono">E</span>
+                        <span>{activeInteractable.prompt}</span>
+                    </div>
+
+                    {/* Pro Mobile/Arcade Action Button */}
+                    <button 
+                        style={{
+                            position: 'absolute',
+                            bottom: '40px',
+                            [joystick?.position === 'right' ? 'left' : 'right']: '45px',
+                            width: '72px',
+                            height: '72px',
+                            borderRadius: '50%',
+                            backgroundColor: 'rgba(99, 102, 241, 0.85)',
+                            border: '3px solid rgba(255, 255, 255, 0.5)',
+                            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+                            color: 'white',
+                            fontWeight: 'bold',
+                            fontSize: '11px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '2px',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            pointerEvents: 'auto',
+                            zIndex: 999
+                        }}
+                        onClick={() => {
+                            if (activeInteractableRef.current) {
+                                frameInteractions.current.push({
+                                    id: activeInteractableRef.current.id,
+                                    name: activeInteractableRef.current.name
+                                });
+                            }
+                        }}
+                        className="active:scale-95 transition-transform"
+                    >
+                        <span className="text-[14px]">⚡</span>
+                        <span>INTERACT</span>
+                    </button>
+                </>
             )}
              {dialogue && (
                 <div className="absolute bottom-28 left-1/2 -translate-x-1/2 w-3/4 max-w-2xl bg-black/80 text-white p-4 rounded-lg border-2 border-indigo-400 pointer-events-auto" onClick={() => setDialogue(null)}>

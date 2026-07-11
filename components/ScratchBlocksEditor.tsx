@@ -88,6 +88,7 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
     { trigger: 'OnKeyPress', label: 'Al presionar tecla [key]', category: 'input', defaultObject: 'System', params: { key: 'space' } },
     { trigger: 'OnAnyKeyPress', label: 'Al presionar cualquier tecla', category: 'input', defaultObject: 'System' },
     { trigger: 'OnObjectClicked', label: 'Al hacer clic en este objeto', category: 'input', defaultObject: '' },
+    { trigger: 'OnInteract', label: 'Al interactuar con objeto (E / Botón)', category: 'input', defaultObject: '' },
     { trigger: 'OnJoystickMove', label: 'Al mover joystick virtual', category: 'input', defaultObject: 'System' },
     { trigger: 'OnJoystickUp', label: 'Al soltar joystick virtual', category: 'input', defaultObject: 'System' },
     { trigger: 'OnJoystickDown', label: 'Al pulsar joystick abajo', category: 'input', defaultObject: 'System' },
@@ -196,6 +197,8 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
     { action: 'LoadGame', label: 'Cargar partida de ranura [slot]', category: 'variables', defaultObject: 'System', params: { slot: '1' } },
     
     { action: 'GoToScene', label: 'Ir a escena [sceneName]', category: 'sceneUI', defaultObject: 'System', params: { sceneName: '' } },
+    { action: 'SetSceneUnlocked', label: 'Establecer escena [sceneName] desbloqueada a [valueBoolean]', category: 'sceneUI', defaultObject: 'System', params: { sceneName: '', valueBoolean: true } },
+    { trigger: 'IsSceneUnlocked', label: '¿Está desbloqueada la escena [sceneName]?', category: 'sceneUI', defaultObject: 'System', params: { sceneName: '' } },
     { action: 'SetBackgroundColor', label: 'Fijar fondo de escena a [color]', category: 'sceneUI', defaultObject: 'System', params: { color: '#000000' } },
     { action: 'SetCameraZoom', label: 'Fijar zoom de cámara a [zoomLevel]', category: 'sceneUI', defaultObject: 'System', params: { zoomLevel: '1' } },
     { action: 'SetUIText', label: 'Establecer texto UI a: [text]', category: 'sceneUI', defaultObject: '', params: { text: '' } },

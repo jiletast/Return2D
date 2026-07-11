@@ -47,6 +47,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         let dialogueElement = null;
         let frameCollisions = [];
         let frameClicks = [];
+        let frameInteractions = [];
         let frameJoystickEvents = [];
         let frameTimerEvents = [];
         let frameAttacks = [];
@@ -68,6 +69,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         let joystickSize = 120;
         let dragging = null;
         let buttonState = {};
+        let activeInteractable = null;
 
         const getObjectAbsolutePosition = (objectId, objectsById) => {
             let currentId = objectId;
@@ -314,6 +316,12 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     break;
                 case 'GoToScene':
                     if (params?.sceneName) loadSceneByName(params.sceneName);
+                    break;
+                case 'SetSceneUnlocked':
+                    if (params?.sceneName) {
+                        const unlocked = params.valueBoolean !== false;
+                        gameVariables['scene_unlocked_' + params.sceneName] = unlocked;
+                    }
                     break;
                 case 'CreateMatch':
                     frameMatchFound = true;
@@ -997,6 +1005,12 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         return c.type === cond.trigger;
                     });
                 case 'OnObjectClicked': return obj ? frameClicks.some(c => c.id === obj.id) : frameClicks.some(c => c.name === cond.object);
+                case 'OnInteract': return obj ? frameInteractions.some(c => c.id === obj.id) : frameInteractions.some(c => c.name === cond.object);
+                case 'IsSceneUnlocked':
+                    if (cond.params?.sceneName) {
+                        return !!gameVariables['scene_unlocked_' + cond.params.sceneName];
+                    }
+                    return false;
                 case 'OnKeyPress': return cond.params?.key && frameKeyPresses.includes(cond.params.key.toLowerCase());
                 case 'OnAnyKeyPress': return frameKeyPresses.length > 0;
                 case 'OnAttack': return obj ? frameAttacks.some(c => c.id === obj.id) : frameAttacks.some(c => c.name === cond.object);
@@ -2156,9 +2170,157 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 }
             });
 
+            // Check for interactables near player
+            const playerObjForInteract = gameObjects.find(o => o.behaviors && o.behaviors.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement'));
+            let currentActiveInteractable = null;
+            
+            if (playerObjForInteract) {
+                const interactables = gameObjects.filter(o => o.behaviors && o.behaviors.some(b => b.name === 'Interactable'));
+                let minDistance = Infinity;
+                for (const item of interactables) {
+                    const dx = item.x - playerObjForInteract.x;
+                    const dy = item.y - playerObjForInteract.y;
+                    const dist = Math.hypot(dx, dy);
+                    const interactBehav = item.behaviors.find(b => b.name === 'Interactable');
+                    const radius = Number((interactBehav.properties && interactBehav.properties.radius) || 60);
+                    
+                    if (dist <= radius && dist < minDistance) {
+                        minDistance = dist;
+                        currentActiveInteractable = {
+                            id: item.id,
+                            name: item.name,
+                            prompt: String((interactBehav.properties && interactBehav.properties.prompt) || 'Interactuar [E]')
+                        };
+                    }
+                }
+            }
+            activeInteractable = currentActiveInteractable;
+
+            // Update interaction prompt overlay in the DOM if needed
+            let interactOverlay = document.getElementById('engine-interact-overlay');
+            let interactBtn = document.getElementById('engine-interact-btn');
+            const uiContainerForInteract = document.getElementById('ui-container');
+            
+            if (activeInteractable && uiContainerForInteract) {
+                if (!interactOverlay) {
+                    interactOverlay = document.createElement('div');
+                    interactOverlay.id = 'engine-interact-overlay';
+                    interactOverlay.style.position = 'absolute';
+                    interactOverlay.style.bottom = '25%';
+                    interactOverlay.style.left = '50%';
+                    interactOverlay.style.transform = 'translateX(-50%)';
+                    interactOverlay.style.backgroundColor = 'rgba(15, 23, 42, 0.9)';
+                    interactOverlay.style.border = '1px solid rgba(129, 140, 248, 0.8)';
+                    interactOverlay.style.color = '#e0e7ff';
+                    interactOverlay.style.padding = '8px 16px';
+                    interactOverlay.style.borderRadius = '9999px';
+                    interactOverlay.style.boxShadow = '0 10px 25px -5px rgba(0,0,0,0.5)';
+                    interactOverlay.style.fontSize = '12px';
+                    interactOverlay.style.fontWeight = 'bold';
+                    interactOverlay.style.display = 'flex';
+                    interactOverlay.style.alignItems = 'center';
+                    interactOverlay.style.gap = '8px';
+                    interactOverlay.style.zIndex = '99999';
+                    interactOverlay.style.pointerEvents = 'auto';
+                    interactOverlay.style.cursor = 'pointer';
+                    
+                    const eBadge = document.createElement('span');
+                    eBadge.innerText = 'E';
+                    eBadge.style.backgroundColor = '#6366f1';
+                    eBadge.style.color = 'white';
+                    eBadge.style.borderRadius = '50%';
+                    eBadge.style.width = '20px';
+                    eBadge.style.height = '20px';
+                    eBadge.style.display = 'flex';
+                    eBadge.style.alignItems = 'center';
+                    eBadge.style.justifyContent = 'center';
+                    eBadge.style.fontFamily = 'monospace';
+                    
+                    const labelSpan = document.createElement('span');
+                    labelSpan.id = 'engine-interact-label';
+                    
+                    interactOverlay.appendChild(eBadge);
+                    interactOverlay.appendChild(labelSpan);
+                    
+                    interactOverlay.addEventListener('click', () => {
+                        if (activeInteractable) {
+                            frameInteractions.push({
+                                id: activeInteractable.id,
+                                name: activeInteractable.name
+                            });
+                        }
+                    });
+                    
+                    uiContainerForInteract.appendChild(interactOverlay);
+                }
+                
+                const label = document.getElementById('engine-interact-label');
+                if (label) label.innerText = activeInteractable.prompt;
+                interactOverlay.style.display = 'flex';
+                
+                // Also mobile/arcade big touch button
+                if (!interactBtn) {
+                    interactBtn = document.createElement('button');
+                    interactBtn.id = 'engine-interact-btn';
+                    interactBtn.style.position = 'absolute';
+                    interactBtn.style.bottom = '40px';
+                    
+                    const joyPos = window.projectData.joystick?.position || 'left';
+                    interactBtn.style[joyPos === 'right' ? 'left' : 'right'] = '45px';
+                    interactBtn.style.width = '72px';
+                    interactBtn.style.height = '72px';
+                    interactBtn.style.borderRadius = '50%';
+                    interactBtn.style.backgroundColor = 'rgba(99, 102, 241, 0.85)';
+                    interactBtn.style.border = '3px solid rgba(255, 255, 255, 0.5)';
+                    interactBtn.style.color = 'white';
+                    interactBtn.style.fontWeight = 'bold';
+                    interactBtn.style.fontSize = '11px';
+                    interactBtn.style.display = 'flex';
+                    interactBtn.style.flexDirection = 'column';
+                    interactBtn.style.alignItems = 'center';
+                    interactBtn.style.justifyContent = 'center';
+                    interactBtn.style.gap = '2px';
+                    interactBtn.style.cursor = 'pointer';
+                    interactBtn.style.userSelect = 'none';
+                    interactBtn.style.pointerEvents = 'auto';
+                    interactBtn.style.zIndex = '99999';
+                    
+                    const iconSpan = document.createElement('span');
+                    iconSpan.innerText = '⚡';
+                    iconSpan.style.fontSize = '14px';
+                    
+                    const textSpan = document.createElement('span');
+                    textSpan.innerText = 'INTERACT';
+                    
+                    interactBtn.appendChild(iconSpan);
+                    interactBtn.appendChild(textSpan);
+                    
+                    interactBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (activeInteractable) {
+                            frameInteractions.push({
+                                id: activeInteractable.id,
+                                name: activeInteractable.name
+                            });
+                        }
+                    });
+                    
+                    uiContainerForInteract.appendChild(interactBtn);
+                }
+                
+                // Reposition if joystick settings changed
+                const joyPos = window.projectData.joystick?.position || 'left';
+                interactBtn.style.left = joyPos === 'right' ? '45px' : 'auto';
+                interactBtn.style.right = joyPos === 'right' ? 'auto' : '45px';
+                interactBtn.style.display = 'flex';
+            } else {
+                if (interactOverlay) interactOverlay.style.display = 'none';
+                if (interactBtn) interactBtn.style.display = 'none';
+            }
+
             evaluateEvents(deltaTime);
             frameKeyPresses = [];
-            frameCollisions = []; frameClicks = []; frameTimerEvents = []; frameAttacks = []; frameDialogueEnd = false;
+            frameCollisions = []; frameClicks = []; frameInteractions = []; frameTimerEvents = []; frameAttacks = []; frameDialogueEnd = false;
 
             activeAnimations.forEach((activeAnim, objId) => {
                 const obj = gameObjects.find(o => o.id === objId);
@@ -2294,6 +2456,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 
             frameCollisions = [];
             frameClicks = [];
+            frameInteractions = [];
             frameJoystickEvents = [];
             frameTimerEvents = [];
             frameAttacks = [];
@@ -2559,23 +2722,71 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             animations = data.animations;
             globalObjects = data.globalObjects || [];
             
-            const assetPromises = assets.map(asset => new Promise((resolve, reject) => {
+            const assetPromises = assets.map(asset => new Promise((resolve) => {
+                const timeoutId = setTimeout(() => {
+                    console.warn('Asset load timed out: ' + asset.url);
+                    resolve();
+                }, 1500); // 1.5s timeout per asset to prevent any hang!
+
                 if (asset.type === 'image') {
                     const img = new Image();
-                    img.onload = () => { imageCache.set(asset.url, img); resolve(); };
-                    img.onerror = reject; img.src = asset.url;
+                    img.onload = () => { 
+                        imageCache.set(asset.url, img); 
+                        clearTimeout(timeoutId);
+                        resolve(); 
+                    };
+                    img.onerror = () => { 
+                        console.error('Failed to load image: ' + asset.url);
+                        clearTimeout(timeoutId);
+                        resolve(); 
+                    };
+                    img.src = asset.url;
+                    
+                    // Animated GIF support: mount to DOM secretly so browser animates it!
+                    if (asset.url.toLowerCase().includes('.gif')) {
+                        img.style.position = 'fixed';
+                        img.style.left = '-9999px';
+                        img.style.top = '0';
+                        img.style.width = '1px';
+                        img.style.height = '1px';
+                        img.style.opacity = '0';
+                        img.style.pointerEvents = 'none';
+                        document.body.appendChild(img);
+                    }
                 } else if (asset.type === 'audio') {
                     const audio = new Audio();
-                    audio.oncanplaythrough = () => { audioCache.set(asset.url, audio); resolve(); };
-                    audio.onerror = reject; audio.src = asset.url;
+                    audio.preload = 'auto';
+                    audio.oncanplaythrough = () => { 
+                        audioCache.set(asset.url, audio); 
+                        clearTimeout(timeoutId);
+                        resolve(); 
+                    };
+                    audio.onerror = () => { 
+                        console.error('Failed to load audio: ' + asset.url);
+                        clearTimeout(timeoutId);
+                        resolve(); 
+                    };
+                    audio.src = asset.url;
                 } else if (asset.type === 'video') {
                     const video = document.createElement('video');
+                    video.preload = 'auto';
                     video.oncanplaythrough = () => {
                         video.muted = true; video.playsInline = true;
-                        video.play().finally(() => { videoCache.set(asset.url, video); resolve(); });
+                        videoCache.set(asset.url, video);
+                        clearTimeout(timeoutId);
+                        resolve();
                     };
-                    video.onerror = reject; video.src = asset.url; video.load();
-                } else resolve();
+                    video.onerror = () => { 
+                        console.error('Failed to load video: ' + asset.url);
+                        clearTimeout(timeoutId);
+                        resolve(); 
+                    };
+                    video.src = asset.url; 
+                    video.load();
+                } else {
+                    clearTimeout(timeoutId);
+                    resolve();
+                }
             }));
 
             await Promise.allSettled(assetPromises);
@@ -2652,6 +2863,12 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 
             const key = e.key.toLowerCase();
             const code = e.code.toLowerCase();
+            if (key === 'e' && activeInteractable) {
+                frameInteractions.push({
+                    id: activeInteractable.id,
+                    name: activeInteractable.name
+                });
+            }
             if (!keysPressed[key] && !keysPressed[code]) {
                 frameKeyPresses.push(key);
                 frameKeyPresses.push(code);
@@ -2800,7 +3017,12 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 joystickBase.style[window.projectData.joystick.position || 'left'] = '40px';
                 joystickBase.style.width = joystickSize + 'px';
                 joystickBase.style.height = joystickSize + 'px';
-                joystickBase.style.backgroundColor = 'rgba(255, 255, 255, ' + (window.projectData.joystick.opacity ?? 0.1) + ')';
+                joystickBase.style.backgroundColor = window.projectData.joystick.backgroundImageUrl ? 'transparent' : 'rgba(255, 255, 255, ' + (window.projectData.joystick.opacity ?? 0.1) + ')';
+                if (window.projectData.joystick.backgroundImageUrl) {
+                    joystickBase.style.backgroundImage = 'url(' + window.projectData.joystick.backgroundImageUrl + ')';
+                    joystickBase.style.backgroundSize = 'cover';
+                    joystickBase.style.backgroundPosition = 'center';
+                }
                 joystickBase.style.borderRadius = '50%';
                 joystickBase.style.pointerEvents = 'auto';
                 joystickBase.style.userSelect = 'none';
@@ -2808,7 +3030,12 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 joystickHandle.style.position = 'absolute';
                 joystickHandle.style.width = handleSize + 'px';
                 joystickHandle.style.height = handleSize + 'px';
-                joystickHandle.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+                joystickHandle.style.backgroundColor = window.projectData.joystick.handleImageUrl ? 'transparent' : 'rgba(255, 255, 255, 0.3)';
+                if (window.projectData.joystick.handleImageUrl) {
+                    joystickHandle.style.backgroundImage = 'url(' + window.projectData.joystick.handleImageUrl + ')';
+                    joystickHandle.style.backgroundSize = 'cover';
+                    joystickHandle.style.backgroundPosition = 'center';
+                }
                 joystickHandle.style.borderRadius = '50%';
                 joystickHandle.style.left = 'calc(50% - ' + (handleSize / 2) + 'px)';
                 joystickHandle.style.top = 'calc(50% - ' + (handleSize / 2) + 'px)';

@@ -159,4 +159,13 @@ export const availableBehaviors: BehaviorDefinition[] = [
       speed: 100,
     },
   },
+  {
+    name: 'Interactable',
+    description: 'Permite al jugador interactuar con este objeto presionando la tecla "E" o el botón de interactuar en pantalla cuando está cerca.',
+    defaultProperties: {
+      radius: 60,
+      prompt: 'Interactuar [E]',
+      showPrompt: true,
+    },
+  },
 ];

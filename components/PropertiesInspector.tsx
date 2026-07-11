@@ -1305,6 +1305,84 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
                             </div>
                         </div>
                     </PropertyRow>
+
+                    <div className="border-t border-stone-800/80 my-2 pt-2 px-1">
+                        <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest block mb-2 px-3">
+                            Joystick Virtual Tactil
+                        </span>
+                        <PropertyRow label="Habilitar Joystick">
+                            <button 
+                                onClick={() => {
+                                    const current = projectData.joystick || { enabled: false, position: 'left' };
+                                    onUpdateProjectData({ joystick: { ...current, enabled: !current.enabled } });
+                                }}
+                                className={`w-full py-1 text-[10px] font-bold rounded m-0.5 border transition-all ${projectData.joystick?.enabled ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#2a2a2a] border-[#333333] text-gray-500'}`}
+                            >
+                                {projectData.joystick?.enabled ? 'SÍ (HABILITADO)' : 'NO (DESHABILITADO)'}
+                            </button>
+                        </PropertyRow>
+                        {projectData.joystick?.enabled && (
+                            <>
+                                <PropertyRow label="Posición">
+                                    <select 
+                                        className="w-full bg-[#1a1a1a] border border-transparent rounded px-1.5 py-0.5 text-[11px] text-gray-200 focus:outline-none"
+                                        value={projectData.joystick.position || 'left'}
+                                        onChange={e => onUpdateProjectData({ joystick: { ...projectData.joystick, position: e.target.value as 'left' | 'right' } })}
+                                    >
+                                        <option value="left">Izquierda (Predeterminado)</option>
+                                        <option value="right">Derecha</option>
+                                    </select>
+                                </PropertyRow>
+                                <PropertyRow label="Tamaño (px)">
+                                    <CompactInput 
+                                        type="number" 
+                                        value={projectData.joystick.size || 120} 
+                                        onChange={v => onUpdateProjectData({ joystick: { ...projectData.joystick, size: Number(v) } })} 
+                                    />
+                                </PropertyRow>
+                                <PropertyRow label="Opacidad Base">
+                                    <div className="flex items-center gap-2 w-full">
+                                        <input 
+                                            type="range" 
+                                            min="0.05" 
+                                            max="1" 
+                                            step="0.05"
+                                            value={projectData.joystick.opacity ?? 0.1} 
+                                            onChange={e => onUpdateProjectData({ joystick: { ...projectData.joystick, opacity: Number(e.target.value) } })}
+                                            className="w-[65%] h-1 bg-stone-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                        />
+                                        <span className="text-[10px] text-gray-300 font-mono w-[35%] text-right font-bold">
+                                            {Math.round((projectData.joystick.opacity ?? 0.1) * 100)}%
+                                        </span>
+                                    </div>
+                                </PropertyRow>
+                                <PropertyRow label="Imagen Base">
+                                    <select 
+                                        className="w-full bg-[#1a1a1a] border border-transparent rounded px-1.5 py-0.5 text-[11px] text-gray-200 focus:outline-none font-mono"
+                                        value={projectData.joystick.backgroundImageUrl || ''}
+                                        onChange={e => onUpdateProjectData({ joystick: { ...projectData.joystick, backgroundImageUrl: e.target.value } })}
+                                    >
+                                        <option value="">Sin imagen (Color sólido)</option>
+                                        {projectData.assets?.filter(a => a.type === 'image').map(asset => (
+                                            <option key={asset.id} value={asset.url}>{asset.name}</option>
+                                        ))}
+                                    </select>
+                                </PropertyRow>
+                                <PropertyRow label="Imagen Knob">
+                                    <select 
+                                        className="w-full bg-[#1a1a1a] border border-transparent rounded px-1.5 py-0.5 text-[11px] text-gray-200 focus:outline-none font-mono"
+                                        value={projectData.joystick.handleImageUrl || ''}
+                                        onChange={e => onUpdateProjectData({ joystick: { ...projectData.joystick, handleImageUrl: e.target.value } })}
+                                    >
+                                        <option value="">Sin imagen (Color sólido)</option>
+                                        {projectData.assets?.filter(a => a.type === 'image').map(asset => (
+                                            <option key={asset.id} value={asset.url}>{asset.name}</option>
+                                        ))}
+                                    </select>
+                                </PropertyRow>
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 

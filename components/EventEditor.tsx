@@ -37,6 +37,7 @@ const categorizedTriggerOptions: {
         { value: 'OnKeyPress', label: 'event.trigger.onKeyPress', needsParams: ['key'] },
         { value: 'OnAnyKeyPress', label: 'event.trigger.onAnyKeyPress' },
         { value: 'OnObjectClicked', label: 'event.trigger.onObjectClicked' },
+        { value: 'OnInteract', label: 'Al interactuar con objeto [E / Botón]' },
         { value: 'OnJoystickMove', label: 'event.trigger.onJoystickMove' },
         { value: 'OnJoystickUp', label: 'event.trigger.onJoystickUp' },
         { value: 'OnJoystickDown', label: 'event.trigger.onJoystickDown' },
@@ -68,6 +69,7 @@ const categorizedTriggerOptions: {
     { category: 'event.category.system', options: [
         { value: 'IsMobile', label: '¿Es dispositivo móvil?' },
         { value: 'IsPC', label: '¿Es PC?' },
+        { value: 'IsSceneUnlocked', label: '¿Escena / nivel desbloqueado?', needsParams: ['sceneName'] },
     ]},
     { category: 'event.category.variables', options: [
         { value: 'CompareVariable', label: 'event.trigger.compareVariable', needsParams: ['variable', 'operator', 'value']},
@@ -162,6 +164,7 @@ const categorizedActionOptions: {
         { value: 'GoToScene', label: 'event.action.goToScene', needsParams: ['sceneName'] },
         { value: 'SetBackgroundColor', label: 'event.action.setBackgroundColor', needsParams: ['color']},
         { value: 'SetCameraZoom', label: 'event.action.setCameraZoom', needsParams: ['zoomLevel']},
+        { value: 'SetSceneUnlocked', label: 'Establecer Escena Desbloqueada', needsParams: ['sceneName', 'valueBoolean'] },
     ]},
     { category: 'event.category.ui', options: [
         { value: 'SetUIText', label: 'event.action.setUIText', needsParams: ['text'] },
