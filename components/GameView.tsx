@@ -132,7 +132,21 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleValue, setConsoleValue] = useState('');
   const [joystickData, setJoystickData] = useState<{x: number, y: number} | null>(null);
+  const [joystickRuntimeEnabled, setJoystickRuntimeEnabled] = useState(joystick?.enabled ?? false);
+  useEffect(() => {
+    setJoystickRuntimeEnabled(joystick?.enabled ?? false);
+  }, [joystick?.enabled]);
   const draggingRef = useRef<{ id: number; offsetX: number; offsetY: number } | null>(null);
+  const floatingFeedbacks = useRef<{
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    text: string;
+    color: string;
+    opacity: number;
+    lifetime: number;
+  }[]>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [activeInteractable, setActiveInteractable] = useState<{ id: number; name: string; prompt: string } | null>(null);
   const activeInteractableRef = useRef<{ id: number; name: string; prompt: string } | null>(null);
@@ -232,6 +246,33 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
   const audioContextRef = useRef<AudioContext | null>(null);
   const joystickUpPreviousFrame = useRef(false);
 
+    const spawnFloatingFeedback = (obj: GameObject | undefined, val: number | string, label?: string) => {
+        const numVal = Number(val);
+        if (isNaN(numVal) || numVal === 0) return;
+        
+        let displayX = (initialGameWidth || 1024) / 2;
+        let displayY = (initialGameHeight || 768) / 2;
+        if (obj && typeof obj.x === 'number') {
+            displayX = obj.x + (obj.width || 0) / 2;
+            displayY = obj.y - 10;
+        }
+        
+        const isNegative = numVal < 0;
+        const text = isNegative ? `${numVal} ${label ? label.toUpperCase() : ''}` : `+${numVal} ${label ? label.toUpperCase() : ''}`;
+        const color = isNegative ? 'rgb(239, 68, 68)' : 'rgb(34, 197, 94)';
+        
+        floatingFeedbacks.current.push({
+            x: displayX,
+            y: displayY,
+            vx: (Math.random() - 0.5) * 20,
+            vy: -60,
+            text,
+            color,
+            opacity: 1.0,
+            lifetime: 1.2
+        });
+    };
+
     const executeActionSingle = (action: Action, self?: GameObject, targetOverride?: GameObject, isContinuous: boolean = false, deltaTime: number = 0, forceRestart: boolean = false) => {
       let targetObj : GameObject | undefined;
       if (targetOverride) {
@@ -242,7 +283,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
           targetObj = gameObjectsRef.current.find(o => o.name === action.object);
       }
 
-      if (!targetObj && action.object !== 'System') return;
+      if (!targetObj && action.object !== 'System' && action.action !== 'SetPlayerSkin') return;
 
       let params = action.params;
       if (typeof params === 'string') {
@@ -322,6 +363,9 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   const toAdd = Number(params.value ?? 0);
                   const result = currentVal + toAdd;
                   gameVariables.current[params.variable] = isNaN(result) ? (params.value ?? 0) : result;
+                  
+                  // Spawn visual floating feedback!
+                  spawnFloatingFeedback(targetObj || self, toAdd, params.variable);
               }
               break;
           case 'SetObjectVariable':
@@ -357,6 +401,9 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   const toAdd = Number(params.value || 0);
                   if (v) v.value = Number(v.value || 0) + toAdd;
                   else targetObj.variables.push({ name: params.variable, value: toAdd });
+
+                  // Spawn visual floating feedback!
+                  spawnFloatingFeedback(targetObj, toAdd, params.variable);
               }
               break;
           case 'GoToScene':
@@ -960,14 +1007,21 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                 const value = Number(action.params.value);
                 let currentVal = targetObj.stats[stat] || 0;
                 
+                let diff = 0;
+                if (operation === 'add') diff = value;
+                else if (operation === 'subtract') diff = -value;
+                else if (operation === 'set') diff = value - currentVal;
+
                 if (operation === 'add') currentVal += value;
                 else if (operation === 'subtract') currentVal -= value;
                 else if (operation === 'set') currentVal = value;
                 
                 if (stat === 'hp') {
                     targetObj.stats.hp = Math.max(0, Math.min(targetObj.stats.maxHp, currentVal));
+                    spawnFloatingFeedback(targetObj, diff, 'HP');
                 } else {
                     targetObj.stats[stat] = currentVal;
+                    spawnFloatingFeedback(targetObj, diff, stat);
                 }
             }
             break;
@@ -975,12 +1029,14 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
             if (targetObj && targetObj.stats && params?.value != null) {
                 const gain = Number(params.value);
                 targetObj.stats.hp = Math.max(0, Math.min(targetObj.stats.maxHp, (targetObj.stats.hp || 100) + gain));
+                spawnFloatingFeedback(targetObj, gain, 'HP');
             }
             break;
         case 'LoseHealth':
             if (targetObj && targetObj.stats && params?.value != null) {
                 const loss = Number(params.value);
                 targetObj.stats.hp = Math.max(0, (targetObj.stats.hp || 100) - loss);
+                spawnFloatingFeedback(targetObj, -loss, 'HP');
             }
             break;
         case 'Knockback':
@@ -1031,6 +1087,85 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   });
               }
               break;
+          case 'SetJoystickEnabled':
+              if (params?.enabled !== undefined) {
+                  const isEnabled = params.enabled === true || params.enabled === 'true';
+                  setJoystickRuntimeEnabled(isEnabled);
+              }
+              break;
+          case 'EnableBehavior':
+              if (targetObj && targetObj.behaviors && params?.behaviorName) {
+                  const origBehavs = targetObj._originalBehaviors || targetObj.behaviors;
+                  origBehavs.forEach((b: any) => {
+                      if (b.name === params.behaviorName) {
+                          b.disabled = false;
+                      }
+                  });
+              }
+              break;
+          case 'DisableBehavior':
+              if (targetObj && targetObj.behaviors && params?.behaviorName) {
+                  const origBehavs = targetObj._originalBehaviors || targetObj.behaviors;
+                  origBehavs.forEach((b: any) => {
+                      if (b.name === params.behaviorName) {
+                          b.disabled = true;
+                      }
+                  });
+              }
+              break;
+          case 'SetSkin':
+              if (targetObj) {
+                  let url = params?.imageUrl;
+                  if (params?.assetId) {
+                      const asset = assets.find(a => a.id === params.assetId);
+                      if (asset) url = asset.url;
+                  }
+                  if (url) {
+                      targetObj.imageUrl = url;
+                      if (!imageCache.current.has(url)) {
+                          const img = new Image();
+                          img.src = url;
+                          img.onload = () => {
+                              imageCache.current.set(url, img);
+                          };
+                      }
+                  }
+                  if (params?.color) {
+                      targetObj.color = params.color;
+                  }
+              }
+              break;
+          case 'SetPlayerSkin': {
+              const playerObj = gameObjectsRef.current.find(o => 
+                  !o.isUI && 
+                  (
+                      o.behaviors?.some(b => ['PlatformerCharacter', 'TopDownRPGMovement'].includes(b.name)) ||
+                      ['player', 'jugador', 'jugador_1', 'player_1'].includes(o.name.toLowerCase())
+                  )
+              );
+              const targetToUse = playerObj || targetObj;
+              if (targetToUse) {
+                  let url = params?.imageUrl;
+                  if (params?.assetId) {
+                      const asset = assets.find(a => a.id === params.assetId);
+                      if (asset) url = asset.url;
+                  }
+                  if (url) {
+                      targetToUse.imageUrl = url;
+                      if (!imageCache.current.has(url)) {
+                          const img = new Image();
+                          img.src = url;
+                          img.onload = () => {
+                              imageCache.current.set(url, img);
+                          };
+                      }
+                  }
+                  if (params?.color) {
+                      targetToUse.color = params.color;
+                  }
+              }
+              break;
+          }
       }
   };
 
@@ -1480,6 +1615,16 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
     let animationFrameId: number;
 
     const gameLoop = (timestamp: number) => {
+      // Filter out behaviors that are disabled
+      gameObjectsRef.current.forEach(obj => {
+          if (obj.behaviors) {
+              if (!obj._originalBehaviors) {
+                  obj._originalBehaviors = [...obj.behaviors];
+              }
+              obj.behaviors = obj._originalBehaviors.filter(b => (b as any).disabled !== true);
+          }
+      });
+
       const now = performance.now();
       if (lastTime === 0) {
         lastTime = now;
@@ -3052,12 +3197,51 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
           }
       });
       
+      // Update and draw visual floating feedbacks!
+      floatingFeedbacks.current.forEach(f => {
+          f.x += f.vx * deltaTime;
+          f.y += f.vy * deltaTime;
+          f.lifetime -= deltaTime;
+          f.opacity = Math.max(0, f.lifetime);
+      });
+      floatingFeedbacks.current = floatingFeedbacks.current.filter(f => f.lifetime > 0);
+
+      floatingFeedbacks.current.forEach(f => {
+          ctx.save();
+          ctx.globalAlpha = f.opacity;
+          ctx.fillStyle = f.color;
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 4;
+          ctx.font = 'bold 18px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.strokeText(f.text, f.x, f.y);
+          ctx.fillText(f.text, f.x, f.y);
+          ctx.restore();
+      });
+      
       ctx.restore();
 
       animationFrameId = requestAnimationFrame(gameLoop);
     };
     
-    const imagePromises = assets.filter(a => a.type === 'image').map(asset => new Promise<void>((resolve) => {
+    const charImageUrls: string[] = [];
+    scene.gameObjects.forEach(o => {
+        if (o.characterImageMapping) {
+            const map = parseCharacterImageMapping(o.characterImageMapping);
+            Object.values(map).forEach(url => {
+                if (url && !charImageUrls.includes(url)) charImageUrls.push(url);
+            });
+        }
+    });
+
+    const allImageAssets = [...assets.filter(a => a.type === 'image')];
+    charImageUrls.forEach(url => {
+        if (!allImageAssets.some(a => a.url === url)) {
+            allImageAssets.push({ id: 'char-' + url, type: 'image', url, name: 'CharImg' });
+        }
+    });
+
+    const imagePromises = allImageAssets.map(asset => new Promise<void>((resolve) => {
         if (imageCache.current.has(asset.url)) return resolve();
         const img = new Image();
         img.onload = () => { imageCache.current.set(asset.url, img); resolve(); };
@@ -3218,6 +3402,63 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
         Math.abs(p1.z - p2.z) < (h1 + h2) / 2
     );
   };
+
+  const parseCharacterImageMapping = (mappingStr: string | undefined): Record<string, string> => {
+      const map: Record<string, string> = {};
+      if (!mappingStr) return map;
+      const lines = mappingStr.split(/[\n,]/);
+      lines.forEach(line => {
+          const parts = line.split('=');
+          if (parts.length >= 2) {
+              const char = parts[0].trim();
+              const url = parts.slice(1).join('=').trim();
+              if (char) {
+                  map[char] = url;
+              }
+          }
+      });
+      return map;
+  };
+
+  const renderUITextElements = (text: string, obj?: GameObject) => {
+      let newText = text;
+      for (const key in gameVariables.current) {
+          newText = newText.replace(new RegExp(`\\{${key}\\}`, 'g'), String(gameVariables.current[key]));
+      }
+      if (obj && obj.variables) {
+          obj.variables.forEach(v => {
+              newText = newText.replace(new RegExp(`\\{${v.name}\\}`, 'g'), String(v.value));
+          });
+      }
+
+      if (obj && obj.characterImageMapping) {
+          const map = parseCharacterImageMapping(obj.characterImageMapping);
+          if (Object.keys(map).length > 0) {
+              return (
+                  <div className="flex items-center justify-center gap-0.5 flex-wrap pointer-events-none">
+                      {Array.from(newText).map((char, idx) => {
+                          const imgUrl = map[char] || map[char.toLowerCase()] || map[char.toUpperCase()];
+                          if (imgUrl) {
+                              return (
+                                  <img 
+                                      key={idx} 
+                                      src={imgUrl} 
+                                      alt={char} 
+                                      className="object-contain inline-block" 
+                                      style={{ height: `${obj.fontSize || 24}px`, minWidth: `${(obj.fontSize || 24) * 0.6}px` }} 
+                                      referrerPolicy="no-referrer"
+                                  />
+                              );
+                          }
+                          return <span key={idx} style={{ fontSize: `${obj.fontSize || 16}px` }} className="text-white font-bold">{char}</span>;
+                      })}
+                  </div>
+              );
+          }
+      }
+
+      return <span>{newText}</span>;
+  }
 
   const renderUIText = (text: string, obj?: GameObject) => {
       let newText = text;
@@ -3582,7 +3823,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                             className="font-bold active:bg-indigo-500/70"
                         >
                             <span style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}>
-                                {obj.text && renderUIText(obj.text, obj)}
+                                {obj.text && renderUITextElements(obj.text, obj)}
                             </span>
                         </button>
                     )
@@ -3643,11 +3884,11 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
 
                 return (
                     <div key={obj.id} style={style}>
-                        {obj.text && <div className="w-full h-full p-1 font-bold text-white text-center flex items-center justify-center" style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}>{renderUIText(obj.text, obj)}</div>}
+                        {obj.text && <div className="w-full h-full p-1 font-bold text-white text-center flex items-center justify-center" style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}>{renderUITextElements(obj.text, obj)}</div>}
                     </div>
                 );
             })}
-            {joystick?.enabled && (
+            {joystickRuntimeEnabled && (
               <div
                   ref={joystickBaseRef}
                   onTouchStart={handleJoystickTouchStart}

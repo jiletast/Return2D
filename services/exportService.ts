@@ -70,6 +70,51 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         let dragging = null;
         let buttonState = {};
         let activeInteractable = null;
+        let floatingFeedbacks = [];
+
+        const parseCharacterImageMapping = (mappingStr) => {
+            const map = {};
+            if (!mappingStr) return map;
+            const lines = mappingStr.split(/[\\n,]/);
+            lines.forEach(line => {
+                const parts = line.split('=');
+                if (parts.length >= 2) {
+                    const char = parts[0].trim();
+                    const url = parts.slice(1).join('=').trim();
+                    if (char) {
+                        map[char] = url;
+                    }
+                }
+            });
+            return map;
+        };
+
+        const spawnFloatingFeedback = (obj, val, label) => {
+            const numVal = Number(val);
+            if (isNaN(numVal) || numVal === 0) return;
+            
+            let displayX = (window.projectData.gameWidth || 1024) / 2;
+            let displayY = (window.projectData.gameHeight || 768) / 2;
+            if (obj && typeof obj.x === 'number') {
+                displayX = obj.x + (obj.width || 0) / 2;
+                displayY = obj.y - 10;
+            }
+            
+            const isNegative = numVal < 0;
+            const text = isNegative ? (String(numVal) + (label ? ' ' + label.toUpperCase() : '')) : ('+' + numVal + (label ? ' ' + label.toUpperCase() : ''));
+            const color = isNegative ? 'rgb(239, 68, 68)' : 'rgb(34, 197, 94)';
+            
+            floatingFeedbacks.push({
+                x: displayX,
+                y: displayY,
+                vx: (Math.random() - 0.5) * 20,
+                vy: -60,
+                text: text,
+                color: color,
+                opacity: 1.0,
+                lifetime: 1.2
+            });
+        };
 
         const getObjectAbsolutePosition = (objectId, objectsById) => {
             let currentId = objectId;
@@ -193,7 +238,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 targetObj = gameObjects.find(o => o.name === action.object) || gameObjects.find(o => o.id === action.object);
             }
 
-            if (!targetObj && action.object !== 'System') return;
+            if (!targetObj && action.object !== 'System' && action.action !== 'SetPlayerSkin') return;
 
             switch (action.action) {
                 case 'SetVisible':
@@ -277,6 +322,9 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         const toAdd = Number(params.value ?? 0);
                         const result = currentVal + toAdd;
                         gameVariables[params.variable] = isNaN(result) ? (params.value ?? 0) : result;
+
+                        // Spawn visual floating feedback!
+                        spawnFloatingFeedback(targetObj || self, toAdd, params.variable);
                     }
                     break;
                 case 'SetObjectVariable':
@@ -312,6 +360,9 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         const toAdd = Number(params.value || 0);
                         if (v) v.value = Number(v.value || 0) + toAdd;
                         else targetObj.variables.push({ name: params.variable, value: toAdd });
+
+                        // Spawn visual floating feedback!
+                        spawnFloatingFeedback(targetObj, toAdd, params.variable);
                     }
                     break;
                 case 'GoToScene':
@@ -676,24 +727,39 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 case 'ModifyStat':
                     if (targetObj?.stats && params?.stat && params?.operation && params?.value != null) {
                         const { stat, operation, value } = params;
+                        const valNum = Number(value);
                         let currentVal = targetObj.stats[stat] || 0;
-                        if (operation === 'add') currentVal += Number(value);
-                        else if (operation === 'subtract') currentVal -= Number(value);
-                        else if (operation === 'set') currentVal = Number(value);
-                        if (stat === 'hp') targetObj.stats.hp = Math.max(0, Math.min(targetObj.stats.maxHp, currentVal));
-                        else targetObj.stats[stat] = currentVal;
+                        
+                        let diff = 0;
+                        if (operation === 'add') diff = valNum;
+                        else if (operation === 'subtract') diff = -valNum;
+                        else if (operation === 'set') diff = valNum - currentVal;
+
+                        if (operation === 'add') currentVal += valNum;
+                        else if (operation === 'subtract') currentVal -= valNum;
+                        else if (operation === 'set') currentVal = valNum;
+
+                        if (stat === 'hp') {
+                            targetObj.stats.hp = Math.max(0, Math.min(targetObj.stats.maxHp, currentVal));
+                            spawnFloatingFeedback(targetObj, diff, 'HP');
+                        } else {
+                            targetObj.stats[stat] = currentVal;
+                            spawnFloatingFeedback(targetObj, diff, stat);
+                        }
                     }
                     break;
                 case 'GainHealth':
                     if (targetObj && targetObj.stats && params?.value != null) {
                         const gain = Number(params.value);
                         targetObj.stats.hp = Math.max(0, Math.min(targetObj.stats.maxHp, (targetObj.stats.hp || 100) + gain));
+                        spawnFloatingFeedback(targetObj, gain, 'HP');
                     }
                     break;
                 case 'LoseHealth':
                     if (targetObj && targetObj.stats && params?.value != null) {
                         const loss = Number(params.value);
                         targetObj.stats.hp = Math.max(0, (targetObj.stats.hp || 100) - loss);
+                        spawnFloatingFeedback(targetObj, -loss, 'HP');
                     }
                     break;
                 case 'Knockback':
@@ -928,6 +994,74 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     newObject.parentId = null; newObject.vx = 0; newObject.vy = 0; newObject.grounded = false;
                     gameObjects.push(newObject);
                     break;
+                case 'SetJoystickEnabled':
+                    if (params?.enabled !== undefined) {
+                        const isEnabled = params.enabled === true || params.enabled === 'true';
+                        const joystickBase = document.getElementById('joystick-base');
+                        if (joystickBase) {
+                            joystickBase.style.display = isEnabled ? 'block' : 'none';
+                        }
+                    }
+                    break;
+                case 'EnableBehavior':
+                    if (targetObj && targetObj.behaviors && params?.behaviorName) {
+                        const origBehavs = targetObj._originalBehaviors || targetObj.behaviors;
+                        origBehavs.forEach(b => {
+                            if (b.name === params.behaviorName) {
+                                b.disabled = false;
+                            }
+                        });
+                    }
+                    break;
+                case 'DisableBehavior':
+                    if (targetObj && targetObj.behaviors && params?.behaviorName) {
+                        const origBehavs = targetObj._originalBehaviors || targetObj.behaviors;
+                        origBehavs.forEach(b => {
+                            if (b.name === params.behaviorName) {
+                                b.disabled = true;
+                            }
+                        });
+                    }
+                    break;
+                case 'SetSkin':
+                    if (targetObj) {
+                        let url = params?.imageUrl;
+                        if (params?.assetId) {
+                            const asset = (window.projectData.assets || []).find(a => a.id === params.assetId);
+                            if (asset) url = asset.url;
+                        }
+                        if (url) {
+                            targetObj.imageUrl = url;
+                        }
+                        if (params?.color) {
+                            targetObj.color = params.color;
+                        }
+                    }
+                    break;
+                case 'SetPlayerSkin': {
+                    const playerObj = gameObjects.find(o => 
+                        !o.isUI && 
+                        (
+                            (o.behaviors || []).some(b => ['PlatformerCharacter', 'TopDownRPGMovement'].includes(b.name)) ||
+                            ['player', 'jugador', 'jugador_1', 'player_1'].includes(o.name.toLowerCase())
+                        )
+                    );
+                    const targetToUse = playerObj || targetObj;
+                    if (targetToUse) {
+                        let url = params?.imageUrl;
+                        if (params?.assetId) {
+                            const asset = (window.projectData.assets || []).find(a => a.id === params.assetId);
+                            if (asset) url = asset.url;
+                        }
+                        if (url) {
+                            targetToUse.imageUrl = url;
+                        }
+                        if (params?.color) {
+                            targetToUse.color = params.color;
+                        }
+                    }
+                    break;
+                }
             }
         };
 
@@ -1245,6 +1379,16 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             lastTime = now;
             lastFrameTime = now - (elapsed % fpsInterval);
 
+            // Filter out behaviors that are disabled
+            gameObjects.forEach(obj => {
+                if (obj.behaviors) {
+                    if (!obj._originalBehaviors) {
+                        obj._originalBehaviors = [...obj.behaviors];
+                    }
+                    obj.behaviors = obj._originalBehaviors.filter(b => b.disabled !== true);
+                }
+            });
+
             // Console display logic
             let consoleUI = document.getElementById('engine-console');
             if (consoleUI) consoleUI.style.display = consoleActive ? 'block' : 'none';
@@ -1551,6 +1695,43 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     const { variableName = 'score', format = 'Score: {value}' } = scoreCounterBehavior.properties;
                     const value = gameVariables[variableName] ?? 0;
                     obj.text = String(format).replace('{value}', String(value));
+                }
+
+                const tweenPathBehavior = obj.behaviors?.find(b => b.name === 'TweenPath');
+                if (tweenPathBehavior) {
+                    const { speed = 100, loop = true, points: pointsStr = '0,0;100,100' } = tweenPathBehavior.properties;
+                    const points = String(pointsStr).split(';').map((p) => { 
+                        const parts = p.split(','); 
+                        return { x: Number(parts[0] || 0), y: Number(parts[1] || 0) }; 
+                    });
+                    
+                    if (obj.tweenPathIndex === undefined) obj.tweenPathIndex = 0;
+                    if (obj.tweenPathProgress === undefined) obj.tweenPathProgress = 0;
+
+                    const p1 = points[obj.tweenPathIndex];
+                    const p2 = points[(obj.tweenPathIndex + 1) % points.length];
+                    
+                    if (p1 && p2) {
+                        const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
+                        if (dist === 0) {
+                            obj.tweenPathIndex = (obj.tweenPathIndex + 1) % points.length;
+                        } else {
+                            const step = (speed * deltaTime) / dist;
+                            obj.tweenPathProgress += step;
+                            if (obj.tweenPathProgress >= 1) {
+                                obj.tweenPathProgress = 0;
+                                obj.tweenPathIndex = obj.tweenPathIndex + 1;
+                                if (!loop && obj.tweenPathIndex >= points.length - 1) {
+                                    obj.tweenPathIndex = points.length - 2;
+                                    obj.tweenPathProgress = 1;
+                                } else {
+                                    obj.tweenPathIndex = obj.tweenPathIndex % points.length;
+                                }
+                            }
+                            obj.x = p1.x + (p2.x - p1.x) * obj.tweenPathProgress;
+                            obj.y = p1.y + (p2.y - p1.y) * obj.tweenPathProgress;
+                        }
+                    }
                 }
 
                 const bossBehavior = obj.behaviors?.find(b => b.name === 'Boss');
@@ -2451,8 +2632,33 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 return { ...o, absX: absPos.x, absY: absPos.y };
             });
             allDrawable.filter(o => !o.isUI).sort((a,b) => a.zIndex-b.zIndex).forEach(obj => renderObject(ctx, obj));
+            
+            // Update and render floating feedbacks in camera space
+            floatingFeedbacks.forEach(f => {
+                f.x += f.vx * deltaTime;
+                f.y += f.vy * deltaTime;
+                f.lifetime -= deltaTime;
+                f.opacity = Math.max(0, f.lifetime);
+            });
+            floatingFeedbacks = floatingFeedbacks.filter(f => f.lifetime > 0);
+
+            floatingFeedbacks.forEach(f => {
+                ctx.save();
+                ctx.globalAlpha = f.opacity;
+                ctx.fillStyle = f.color;
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 4;
+                ctx.font = 'bold 18px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.strokeText(f.text, f.x, f.y);
+                ctx.fillText(f.text, f.x, f.y);
+                ctx.restore();
+            });
+
             ctx.restore();
-            allDrawable.filter(o => o.isUI).sort((a,b) => a.zIndex-b.zIndex).forEach(obj => renderObject(ctx, obj, true));
+            
+            // Update the premium crisp HTML UI overlay with variable interpolation and image character mapping
+            updateUIDOMElements();
 
             frameCollisions = [];
             frameClicks = [];
@@ -2628,10 +2834,10 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 context.textAlign = 'center';
                 context.textBaseline = 'middle';
                 let newText = obj.text;
-                for (const key in gameVariables) newText = newText.replace(new RegExp('\\{' + key + '\\}', 'g'), String(gameVariables[key]));
+                for (const key in gameVariables) newText = newText.replace(new RegExp('\\\\{' + key + '\\\\}', 'g'), String(gameVariables[key]));
                 if (obj.variables) {
                     obj.variables.forEach(v => {
-                        newText = newText.replace(new RegExp('\\{' + v.name + '\\}', 'g'), String(v.value));
+                        newText = newText.replace(new RegExp('\\\\{' + v.name + '\\\\}', 'g'), String(v.value));
                     });
                 }
                 context.fillText(newText, 0, 0);
@@ -2968,39 +3174,93 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             const scaleY = uiContainer.clientHeight / (window.projectData.gameHeight || 768);
 
             uiControls.forEach(obj => {
-                const button = document.createElement('button');
+                const isControlButton = obj.controlAction && obj.controlAction !== 'none';
+                const hasClickScript = obj.scripts && obj.scripts.some(s => s.trigger === 'OnClick');
+                const isInteractive = isControlButton || hasClickScript;
                 
-                button.style.position = 'absolute';
-                button.style.left = (obj.x * scaleX) + 'px';
-                button.style.top = (obj.y * scaleY) + 'px';
-                button.style.width = (obj.width * scaleX) + 'px';
-                button.style.height = (obj.height * scaleY) + 'px';
-                button.style.background = obj.imageUrl ? \`url(\${obj.imageUrl})\` : obj.color;
-                button.style.backgroundSize = 'contain';
-                button.style.backgroundRepeat = 'no-repeat';
-                button.style.backgroundPosition = 'center';
-                button.style.border = '2px solid rgba(255,255,255,0.3)';
-                button.style.borderRadius = '8px';
-                button.dataset.action = obj.controlAction || 'none';
-                uiContainer.appendChild(button);
+                const elem = document.createElement(isInteractive ? 'button' : 'div');
+                elem.id = 'ui-elem-' + obj.id;
+                elem.style.position = 'absolute';
+                elem.style.left = (obj.x * scaleX) + 'px';
+                elem.style.top = (obj.y * scaleY) + 'px';
+                elem.style.width = (obj.width * scaleX) + 'px';
+                elem.style.height = (obj.height * scaleY) + 'px';
+                
+                elem.style.display = 'flex';
+                elem.style.alignItems = 'center';
+                elem.style.justifyContent = 'center';
+                elem.style.color = obj.textColor || 'white';
+                elem.style.zIndex = obj.zIndex ?? 0;
+                elem.style.opacity = obj.opacity ?? 1;
+                elem.style.borderRadius = '8px';
+                elem.style.userSelect = 'none';
+                elem.style.outline = 'none';
+                
+                if (obj.imageUrl) {
+                    elem.style.backgroundImage = 'url(' + obj.imageUrl + ')';
+                    elem.style.backgroundSize = 'contain';
+                    elem.style.backgroundRepeat = 'no-repeat';
+                    elem.style.backgroundPosition = 'center';
+                }
+                
+                if (isControlButton) {
+                    elem.style.border = '2px solid rgba(255,255,255,0.3)';
+                    elem.style.backgroundColor = 'rgba(0,0,0,0.4)';
+                    elem.style.cursor = 'pointer';
+                } else {
+                    elem.style.border = 'none';
+                    elem.style.backgroundColor = (obj.color !== 'transparent' && !obj.imageUrl) ? obj.color : 'transparent';
+                    elem.style.pointerEvents = 'none';
+                }
+                
+                if (obj.isHealthBar) {
+                    elem.style.flexDirection = 'column';
+                    elem.style.alignItems = 'stretch';
+                    elem.style.backgroundColor = 'rgba(15, 23, 42, 0.85)';
+                    elem.style.border = '1px solid rgba(255, 255, 255, 0.15)';
+                    elem.style.padding = '6px 8px';
+                    elem.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.3)';
+                    elem.style.pointerEvents = 'none';
+                    
+                    elem.innerHTML = '<div class="hp-label" style="display: flex; align-items: center; justify-content: space-between; text-align: left; font-size: 11px; font-weight: bold; color: white; margin-bottom: 6px; font-family: sans-serif; width: 100%;">❤️ ' + (obj.healthBarTarget || 'Jugador') + '</div><div class="hp-track" style="width: 100%; background-color: #020617; border-radius: 9999px; height: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); position: relative;"><div class="hp-fill" style="width: 100%; height: 100%; border-radius: 9999px; background-color: #10b981; transition: width 0.3s ease;"></div></div>';
+                } else if (obj.text) {
+                    elem.style.fontFamily = 'sans-serif';
+                    elem.style.fontWeight = 'bold';
+                    elem.style.fontSize = (obj.fontSize || 16) * scaleX + 'px';
+                    
+                    const textInner = document.createElement('div');
+                    textInner.className = 'text-inner';
+                    textInner.style.width = '100%';
+                    textInner.style.height = '100%';
+                    textInner.style.display = 'flex';
+                    textInner.style.alignItems = 'center';
+                    textInner.style.justifyContent = 'center';
+                    elem.appendChild(textInner);
+                }
+                
+                uiContainer.appendChild(elem);
 
-                if (obj.controlAction && obj.controlAction !== 'none') {
+                if (isControlButton) {
                     const handlePress = e => { e.preventDefault(); actionsPressed[obj.controlAction] = true; actionsPressed[obj.controlAction + '_ui'] = true; };
                     const handleRelease = e => { e.preventDefault(); actionsPressed[obj.controlAction] = false; actionsPressed[obj.controlAction + '_ui'] = false; };
 
-                    button.addEventListener('mousedown', handlePress);
-                    button.addEventListener('mouseup', handleRelease);
-                    button.addEventListener('mouseleave', handleRelease);
-                    button.addEventListener('touchstart', handlePress, { passive: false });
-                    button.addEventListener('touchend', handleRelease, { passive: false });
+                    elem.addEventListener('mousedown', handlePress);
+                    elem.addEventListener('mouseup', handleRelease);
+                    elem.addEventListener('mouseleave', handleRelease);
+                    elem.addEventListener('touchstart', handlePress, { passive: false });
+                    elem.addEventListener('touchend', handleRelease, { passive: false });
                 }
 
-                button.addEventListener('click', (e) => {
+                if (hasClickScript) {
+                    elem.style.pointerEvents = 'auto';
+                    elem.style.cursor = 'pointer';
+                }
+                elem.addEventListener('click', (e) => {
                     e.preventDefault();
                     obj.scripts?.forEach(s => {
                         if (s.trigger === 'OnClick') {
                             const sId = s.id || s.trigger;
-                            executeActionsSequential(s.actions, obj, false, 0, false, undefined, \`obj-\${obj.id}-script-\${sId}\`);
+                            executeActionsSequential(s.actions, obj, false, 0, false, undefined, 'obj-' + obj.id + '-script-' + sId);
                         }
                     });
                 });
@@ -3105,6 +3365,89 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             }
         }
 
+        function updateUIDOMElements() {
+            const uiContainer = document.getElementById('ui-container');
+            if (!uiContainer) return;
+            const uiControls = gameObjects.filter(o => o.isUI);
+            const scaleX = uiContainer.clientWidth / (window.projectData.gameWidth || 1024);
+            
+            uiControls.forEach(obj => {
+                const elem = document.getElementById('ui-elem-' + obj.id);
+                if (!elem) return;
+                
+                elem.style.display = obj.visible === false ? 'none' : 'flex';
+                if (obj.visible === false) return;
+                
+                if (obj.isHealthBar) {
+                    let targetObj = gameObjects.find(o => o.name === obj.healthBarTarget);
+                    if (!targetObj && obj.healthBarTarget) {
+                        targetObj = gameObjects.find(o => o.name.toLowerCase().includes(obj.healthBarTarget.toLowerCase()));
+                    }
+                    if (!targetObj) {
+                        targetObj = gameObjects.find(o => o.name.toLowerCase().includes('jugador') || o.name.toLowerCase().includes('player'));
+                    }
+                    if (!targetObj) {
+                        targetObj = gameObjects.find(o => o.stats && typeof o.stats.hp === 'number');
+                    }
+                    
+                    const hp = targetObj?.stats?.hp ?? 100;
+                    const maxHp = targetObj?.stats?.maxHp ?? 100;
+                    const hpPercent = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+                    
+                    const labelElem = elem.querySelector('.hp-label');
+                    const fillElem = elem.querySelector('.hp-fill');
+                    
+                    if (labelElem) {
+                        labelElem.innerHTML = '❤️ ' + (targetObj ? targetObj.name : (obj.healthBarTarget || 'Jugador')) + ' <span style="font-family: monospace; opacity: 0.8; margin-left: auto;">' + Math.round(hp) + '/' + maxHp + '</span>';
+                    }
+                    if (fillElem) {
+                        fillElem.style.width = hpPercent + '%';
+                        if (hpPercent < 25) {
+                            fillElem.style.backgroundColor = '#ef4444';
+                        } else if (hpPercent < 50) {
+                            fillElem.style.backgroundColor = '#f59e0b';
+                        } else {
+                            fillElem.style.backgroundColor = '#10b981';
+                        }
+                    }
+                } else if (obj.text) {
+                    let textVal = obj.text;
+                    for (const key in gameVariables) {
+                        textVal = textVal.replace(new RegExp('\\\\{' + key + '\\\\}', 'g'), String(gameVariables[key]));
+                    }
+                    if (obj.variables) {
+                        obj.variables.forEach(v => {
+                            textVal = textVal.replace(new RegExp('\\\\{' + v.name + '\\\\}', 'g'), String(v.value));
+                        });
+                    }
+                    
+                    const innerTextContainer = elem.querySelector('.text-inner');
+                    if (innerTextContainer) {
+                        if (obj.characterImageMapping) {
+                            const map = parseCharacterImageMapping(obj.characterImageMapping);
+                            if (Object.keys(map).length > 0) {
+                                let html = '<div style="display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap;">';
+                                Array.from(textVal).forEach(char => {
+                                    const imgUrl = map[char] || map[char.toLowerCase()] || map[char.toUpperCase()];
+                                    if (imgUrl) {
+                                        html += '<img src="' + imgUrl + '" alt="' + char + '" style="height: ' + (obj.fontSize || 24) + 'px; min-width: ' + ((obj.fontSize || 24) * 0.6) + 'px; object-fit: contain; image-rendering: pixelated;" referrerpolicy="no-referrer" />';
+                                    } else {
+                                        html += '<span style="font-size: ' + (obj.fontSize || 16) + 'px; font-weight: bold; color: ' + (obj.textColor || 'white') + ';">' + char + '</span>';
+                                    }
+                                });
+                                html += '</div>';
+                                innerTextContainer.innerHTML = html;
+                            } else {
+                                innerTextContainer.innerHTML = '<span style="font-size: ' + (obj.fontSize || 16) * scaleX + 'px; font-weight: bold; color: ' + (obj.textColor || 'white') + ';">' + textVal + '</span>';
+                            }
+                        } else {
+                            innerTextContainer.innerHTML = '<span style="font-size: ' + (obj.fontSize || 16) * scaleX + 'px; font-weight: bold; color: ' + (obj.textColor || 'white') + ';">' + textVal + '</span>';
+                        }
+                    }
+                }
+            });
+        }
+
         window.addEventListener('resize', () => {
              const gameContainer = document.getElementById('game-container');
              const uiContainer = document.getElementById('ui-container');
@@ -3127,7 +3470,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
              setupUI();
         });
         
-        document.addEventListener('DOMContentLoaded', () => {
+        const initGameBoot = () => {
             const overlay = document.createElement('div');
             overlay.id = 'start-overlay';
             overlay.style.position = 'fixed';
@@ -3156,7 +3499,13 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 startGame(window.projectData);
                 window.dispatchEvent(new Event('resize'));
             });
-        });
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initGameBoot);
+        } else {
+            initGameBoot();
+        }
     `;
 
     const imageRenderingStyle = projectData.hdRendering !== false ? 'auto' : 'pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges';

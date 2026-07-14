@@ -107,6 +107,8 @@ const categorizedActionOptions: {
     { category: 'event.category.object', options: [
         { value: 'Destroy', label: 'event.action.destroy' },
         { value: 'CreateObject', label: 'event.action.createObject', needsParams: ['templateObjectName'] },
+        { value: 'EnableBehavior', label: 'Habilitar Comportamiento', needsParams: ['behaviorName'] },
+        { value: 'DisableBehavior', label: 'Deshabilitar Comportamiento', needsParams: ['behaviorName'] },
         { value: 'SetObjectPosition', label: 'event.action.setPosition', needsParams: ['x', 'y']},
         { value: 'TeleportToObject', label: 'Teletransportar a Objeto', needsParams: ['targetObjectName']},
         { value: 'MoveObject', label: 'event.action.moveDirection', needsParams: ['direction', 'speed'] },
@@ -141,6 +143,8 @@ const categorizedActionOptions: {
     ]},
     { category: 'event.category.visuals', options: [
         { value: 'PlayAnimation', label: 'event.action.playAnimation', needsParams: ['animationId'] },
+        { value: 'SetSkin', label: 'Establecer Skin (Imagen/Color)', needsParams: ['imageUrl', 'color'] },
+        { value: 'SetPlayerSkin', label: 'Cambiar Skin de Player', needsParams: ['imageUrl', 'color'] },
         { value: 'PlayVideo', label: 'event.action.playVideo', needsParams: ['videoAssetId'] },
         { value: 'PauseVideo', label: 'event.action.pauseVideo', needsParams: ['videoAssetId'] },
         { value: 'StopVideo', label: 'event.action.stopVideo' },
@@ -168,6 +172,7 @@ const categorizedActionOptions: {
     ]},
     { category: 'event.category.ui', options: [
         { value: 'SetUIText', label: 'event.action.setUIText', needsParams: ['text'] },
+        { value: 'SetJoystickEnabled', label: 'Activar/Desactivar Joystick', needsParams: ['enabled'] },
         { value: 'ShowDialogue', label: 'event.action.showDialogue', needsParams: ['dialogueText'] },
         { value: 'ShowConsole', label: 'event.action.showConsole' },
     ]},
@@ -589,6 +594,38 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
                     <option value="subtract">{t('event.operation.subtract')}</option>
                     <option value="set">{t('event.operation.set')}</option>
                 </select>);
+            case 'behaviorName':
+                return (
+                    <select key={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
+                        <option value="">-- Seleccionar Comportamiento --</option>
+                        <option value="Solid">Solid</option>
+                        <option value="PlatformerCharacter">PlatformerCharacter</option>
+                        <option value="Physics">Physics</option>
+                        <option value="TopDownRPGMovement">TopDownRPGMovement</option>
+                        <option value="Patrol">Patrol</option>
+                        <option value="Oscillate">Oscillate</option>
+                        <option value="Rotate">Rotate</option>
+                        <option value="Pulse">Pulse</option>
+                        <option value="ScoreCounter">ScoreCounter</option>
+                        <option value="TweenPath">TweenPath</option>
+                        <option value="Boss">Boss</option>
+                        <option value="Health">Health</option>
+                        <option value="FollowCamera">FollowCamera</option>
+                        <option value="Ladder">Ladder</option>
+                        <option value="LadderClimber">LadderClimber</option>
+                        <option value="Tilemap">Tilemap</option>
+                        <option value="Interactable">Interactable</option>
+                    </select>
+                );
+            case 'imageUrl': {
+                const imageAssets = assets.filter(a => a.type === 'image');
+                return (
+                    <select key={param} className="input-field min-w-[140px]" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})}>
+                        <option value="">-- Seleccionar Imagen --</option>
+                        {imageAssets.map(asset => <option key={asset.id} value={asset.url}>{asset.name}</option>)}
+                    </select>
+                );
+            }
             default:
                 return <input key={param} type="text" placeholder={param} className="input-field" value={item.params?.[param] ?? ''} onChange={e => updateParams({[param]: e.target.value})} />;
         }

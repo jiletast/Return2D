@@ -30,7 +30,7 @@ fs.writeFileSync('temp_index.html', htmlCode);
     const page = await browser.newPage();
     
     page.on('console', msg => console.log('BROWSER LOG:', msg.text()));
-    page.on('pageerror', err => console.log('BROWSER ERROR:', (err as Error).message));
+    page.on('pageerror', err => console.log('BROWSER ERROR STACK:', (err as Error).stack || (err as Error).message));
     
     await page.goto(`file://${process.cwd()}/temp_index.html`);
     await new Promise(r => setTimeout(r, 1000));

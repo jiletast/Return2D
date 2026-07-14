@@ -143,6 +143,39 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
   
   const activeScene = projectData.scenes.find(s => s.id === projectData.activeSceneId) ?? null;
 
+  const handleCreateHealthBar = () => {
+    if (!selectedObject || !activeScene) return;
+    
+    const hbId = Date.now();
+    const existingHBs = activeScene.gameObjects.filter(o => o.isHealthBar) || [];
+    const newHealthBar: GameObject = {
+        id: hbId,
+        name: `Barra_Vida_${selectedObject.name}`,
+        x: 20,
+        y: 20 + existingHBs.length * 55,
+        width: 160,
+        height: 45,
+        color: '#252525',
+        zIndex: 100,
+        isUI: true,
+        isHealthBar: true,
+        healthBarTarget: selectedObject.name,
+        text: '',
+        variables: [],
+        scripts: []
+    };
+    
+    const updatedGameObjects = [...activeScene.gameObjects, newHealthBar];
+    const updatedScenes = projectData.scenes.map(s => {
+        if (s.id === activeScene.id) {
+            return { ...s, gameObjects: updatedGameObjects };
+        }
+        return s;
+    });
+    
+    onUpdateProjectData({ scenes: updatedScenes });
+  };
+
   const toggleSection = (id: string) => {
     setOpenSections(prev => {
         const next = new Set(prev);
@@ -549,6 +582,18 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
             />
             {openSections.has('uiSettings') && (
                 <div className="bg-[#1a1a1a]/40 p-3 space-y-3">
+                    {selectedObject && !selectedObject.isUI && (
+                        <div className="px-3 py-2.5 my-1 bg-emerald-950/20 border border-emerald-800/30 rounded-md space-y-1.5 shadow-inner">
+                            <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider block">❤️ Barra de Vida Instantánea</span>
+                            <p className="text-[10px] text-gray-400 leading-relaxed">Genera un elemento de interfaz (UI) para mostrar el HP de <b>{selectedObject.name}</b> dinámicamente.</p>
+                            <button
+                                onClick={handleCreateHealthBar}
+                                className="w-full py-1.5 text-[10px] font-bold bg-emerald-700/80 hover:bg-emerald-600 border border-emerald-600/50 hover:border-emerald-500 text-white rounded shadow-md transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                                ❤️ Crear Barra de Vida
+                            </button>
+                        </div>
+                    )}
                     <PropertyRow label="Fijo en Pantalla (UI)">
                         <button 
                             onClick={() => handleUpdate({ isUI: selectedObject.isUI !== true })}
@@ -595,6 +640,18 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
                                     onChange={v => handleUpdate({ text: v as string })} 
                                     placeholder="ej. HP / SCORE: {score}"
                                 />
+                            </PropertyRow>
+
+                            <PropertyRow label="Mapear Imágenes">
+                                <div className="flex flex-col gap-1 w-full">
+                                    <textarea 
+                                        value={selectedObject.characterImageMapping || ''} 
+                                        onChange={e => handleUpdate({ characterImageMapping: e.target.value })}
+                                        placeholder="ej. 1=url_imagen&#10;2=url_imagen&#10;o caracteres: A=url_A"
+                                        className="w-full bg-[#1a1a1a] border border-[#2b2b2b] rounded p-1 text-[10px] text-indigo-300 focus:outline-none font-mono h-16 resize-none"
+                                    />
+                                    <span className="text-[8px] text-gray-500 leading-tight">Usa un par 'carácter=URL' por línea para personalizar texto o números con tus propias imágenes.</span>
+                                </div>
                             </PropertyRow>
 
                             <PropertyRow label="Mapear Botón Táctil">

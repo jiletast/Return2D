@@ -55,11 +55,13 @@ export interface GameObject {
   attackEndTime?: number;
   rpgKnockbackVx?: number;
   rpgKnockbackVy?: number;
+  _originalBehaviors?: Behavior[];
   behaviors?: Behavior[];
   isUI?: boolean; // Is this a fixed-position UI element?
   isHealthBar?: boolean; // Is this a Health Bar UI element?
   healthBarTarget?: string; // Target object name for the health bar
   text?: string; // Text content if it's a UI text object
+  characterImageMapping?: string; // Optional character mapping (e.g. "1=url,2=url" or "A=url")
   variables?: Variable[]; // For object-specific variables
   scripts?: ObjectScript[]; // For object-specific visual scripts
   controlAction?: 'moveLeft' | 'moveRight' | 'jump' | 'attack' | 'none' | 'moveUp' | 'moveDown' | 'run';
@@ -206,7 +208,7 @@ export interface Condition {
 
 export interface Action {
   object: string; // Can be an object name, 'System', or 'Self' for object scripts
-  action: 'Destroy' | 'AddToVariable' | 'SetVariable' | 'SetBooleanVariable' | 'ToggleBooleanVariable' | 'SetObjectBooleanVariable' | 'ToggleObjectBooleanVariable' | 'GoToScene' | 'SetUIText' | 'SetObjectPosition' | 'TeleportToObject' | 'PlaySound' | 'SetBackgroundColor' | 'SetBackgroundMusic' | 'StopBackgroundMusic' | 'PauseBackgroundMusic' | 'ResumeBackgroundMusic' | 'SetBackgroundMusicVolume' | 'PlayAnimation' | 'ModifyStat' | 'ShowDialogue' | 'SetQuestState' | 'CreateMatch' | 'JoinMatch' | 'SendNetworkMessage' | 'SetPlayerName' | 'CreateObject' | 'PlayVideo' | 'PauseVideo' | 'StopVideo' | 'SaveGame' | 'LoadGame' | 'SetCameraZoom' | 'SetObjectVariable' | 'AddToObjectVariable' | 'StartTimer' | 'StopTimer' | 'MoveObject' | 'ForceJump' | 'TriggerAttack' | 'Attack' | 'SetParent' | 'RotateObject' | 'ScaleObject' | 'GenerateObjectAt' | 'OscillateObject' | 'OscillateScale' | 'RotateContinuously' | 'SetScale' | 'SetVelocityX' | 'SetVelocityY' | 'SetRotationSpeed' | 'SetScaleSpeedX' | 'SetScaleSpeedY' | 'MoveTo' | 'RotateTo' | 'ScaleTo' | 'SetVisible' | 'SetOpacity' | 'SetZIndex' | 'SetFlipX' | 'SetFlipY' | 'SlideTo' | 'SetDraggable' | 'ShowConsole' | 'GainHealth' | 'LoseHealth' | 'Knockback' | 'Shoot' | 'CreatePlayers' | 'DisconnectPlayers' | 'EnableCollision' | 'DisableCollision' | 'Wait' | 'SetSceneUnlocked';
+  action: 'Destroy' | 'AddToVariable' | 'SetVariable' | 'SetBooleanVariable' | 'ToggleBooleanVariable' | 'SetObjectBooleanVariable' | 'ToggleObjectBooleanVariable' | 'GoToScene' | 'SetUIText' | 'SetObjectPosition' | 'TeleportToObject' | 'PlaySound' | 'SetBackgroundColor' | 'SetBackgroundMusic' | 'StopBackgroundMusic' | 'PauseBackgroundMusic' | 'ResumeBackgroundMusic' | 'SetBackgroundMusicVolume' | 'PlayAnimation' | 'ModifyStat' | 'ShowDialogue' | 'SetQuestState' | 'CreateMatch' | 'JoinMatch' | 'SendNetworkMessage' | 'SetPlayerName' | 'CreateObject' | 'PlayVideo' | 'PauseVideo' | 'StopVideo' | 'SaveGame' | 'LoadGame' | 'SetCameraZoom' | 'SetObjectVariable' | 'AddToObjectVariable' | 'StartTimer' | 'StopTimer' | 'MoveObject' | 'ForceJump' | 'TriggerAttack' | 'Attack' | 'SetParent' | 'RotateObject' | 'ScaleObject' | 'GenerateObjectAt' | 'OscillateObject' | 'OscillateScale' | 'RotateContinuously' | 'SetScale' | 'SetVelocityX' | 'SetVelocityY' | 'SetRotationSpeed' | 'SetScaleSpeedX' | 'SetScaleSpeedY' | 'MoveTo' | 'RotateTo' | 'ScaleTo' | 'SetVisible' | 'SetOpacity' | 'SetZIndex' | 'SetFlipX' | 'SetFlipY' | 'SlideTo' | 'SetDraggable' | 'ShowConsole' | 'GainHealth' | 'LoseHealth' | 'Knockback' | 'Shoot' | 'CreatePlayers' | 'DisconnectPlayers' | 'EnableCollision' | 'DisableCollision' | 'Wait' | 'SetSceneUnlocked' | 'EnableBehavior' | 'DisableBehavior' | 'SetJoystickEnabled' | 'SetSkin' | 'SetPlayerSkin';
   params?: Record<string, any>;
   onCompleteActions?: Action[];
 }

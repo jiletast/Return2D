@@ -16,6 +16,7 @@ import { SpriteEditor } from './components/SpriteEditor';
 import PoseAnimationEditor from './components/PoseAnimationEditor';
 import AudioLab from './components/AudioLab';
 import SoundtrackEditor from './components/SoundtrackEditor';
+import CharacterSkinsEditor from './components/CharacterSkinsEditor';
 import Toast from './components/Toast';
 import { HierarchyIcon } from './components/icons/HierarchyIcon';
 import { EditorIcon } from './components/icons/EditorIcon';
@@ -94,6 +95,7 @@ const AppContent: React.FC = () => {
   const [showAudioLab, setShowAudioLab] = useState(false);
   const [showPoseAnimationEditor, setShowPoseAnimationEditor] = useState(false);
   const [showSoundtrackEditor, setShowSoundtrackEditor] = useState(false);
+  const [showCharacterSkinsEditor, setShowCharacterSkinsEditor] = useState(false);
   
   const [hierarchyWidth, setHierarchyWidth] = useState(260);
   const [inspectorWidth, setInspectorWidth] = useState(300);
@@ -373,6 +375,7 @@ const AppContent: React.FC = () => {
             projectData={projectData}
             onUpdateProjectData={updateProjectData}
             onAddObject={handleAddObject}
+            onOpenCharacterSkins={() => setShowCharacterSkinsEditor(true)}
         />
         
         <main className="flex-grow flex h-full overflow-hidden relative">
@@ -555,6 +558,14 @@ const AppContent: React.FC = () => {
         />}
         {showAudioLab && <AudioLab onClose={() => setShowAudioLab(false)} onAddAsset={handleAddAsset} />}
         {showSoundtrackEditor && <SoundtrackEditor onClose={() => setShowSoundtrackEditor(false)} onAddAsset={handleAddAsset} />}
+        {showCharacterSkinsEditor && (
+            <CharacterSkinsEditor 
+                isOpen={showCharacterSkinsEditor}
+                onClose={() => setShowCharacterSkinsEditor(false)}
+                projectData={projectData!}
+                onUpdateProjectData={updateProjectData}
+            />
+        )}
         
         <Toast message={toast.message} show={toast.show} />
     </div>

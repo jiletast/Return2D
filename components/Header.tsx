@@ -35,6 +35,7 @@ interface HeaderProps {
   projectData: ProjectData | null;
   onUpdateProjectData: (updates: Partial<ProjectData>) => void;
   onAddObject: (props?: Partial<GameObject>) => void;
+  onOpenCharacterSkins?: () => void;
 }
 
 const GAME_ICONS = ['🎮', '👾', '🚀', '🧱', '🤠', '⚔️', '⚽', '🪄', '🏰', '💎', '🍎', '🦖', '👻', '👽', '👑', '🌟', '🐱', '🦊', '🦄', '🍕', '🚗', '✈️', '🏝️', '🌋', '🎯', '🎸', '🎨', '🧩', '🔑', '❤️'];
@@ -42,7 +43,8 @@ const GAME_ICONS = ['🎮', '👾', '🚀', '🧱', '🤠', '⚔️', '⚽', '�
 const Header: React.FC<HeaderProps> = ({ 
   onSave, isPlaying, onTogglePlay, onExport, onViewCode, onReturnToStart, onImportProject, projectName, onUpdateProjectName,
   projectIcon, onUpdateProjectIcon,
-  activeScene, projectData, onUpdateProjectData, onAddObject
+  activeScene, projectData, onUpdateProjectData, onAddObject,
+  onOpenCharacterSkins
 }) => {
   const { t, language, setLanguage } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -158,6 +160,12 @@ const Header: React.FC<HeaderProps> = ({
              <button onClick={onViewCode} className="p-1 px-3 hover:bg-white/5 text-gray-400 hover:text-white transition-colors" title="Ver Código">
                 <Code size={14} />
              </button>
+             {onOpenCharacterSkins && (
+                 <button onClick={onOpenCharacterSkins} className="p-1 px-3 border-l border-white/5 hover:bg-white/5 text-violet-400 hover:text-violet-300 transition-colors flex items-center gap-1.5 text-[9px] font-bold uppercase cursor-pointer" title="Skins y Personajes">
+                    <Sparkles size={11} className="animate-pulse text-violet-400" />
+                    <span className="hidden xl:inline text-[9px] text-violet-300">Skins</span>
+                 </button>
+             )}
              <button onClick={onSave} className="p-1 px-3 border-l border-white/5 hover:bg-white/5 text-indigo-400 hover:text-indigo-300 transition-colors" title="Guardar">
                 <Save size={14} />
              </button>
