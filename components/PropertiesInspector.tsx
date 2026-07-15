@@ -1228,6 +1228,81 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
                 </div>
             )}
 
+            {/* Camera Limits */}
+            <SectionHeader 
+                title="Límites de Cámara 2D" 
+                icon={<Grid size={14} className="text-indigo-400" />} 
+                isOpen={openSections.has('cameraBounds')}
+                onToggle={() => toggleSection('cameraBounds')}
+            />
+            {openSections.has('cameraBounds') && activeScene && (
+                <div className="bg-[#1a1a1a]/40 p-3 space-y-3">
+                    <PropertyRow label="Habilitar Límites">
+                        <button 
+                            onClick={() => {
+                                const current = activeScene.cameraBounds || { enabled: false, x: 0, y: 0, width: 1024, height: 768 };
+                                onUpdateScene({ cameraBounds: { ...current, enabled: !current.enabled } });
+                            }}
+                            className={`w-full py-1 text-[10px] font-bold rounded border transition-all ${activeScene.cameraBounds?.enabled ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-[#2a2a2a] border-[#333333] text-gray-500'}`}
+                        >
+                            {activeScene.cameraBounds?.enabled ? 'SÍ (ACTIVO)' : 'NO (INACTIVO)'}
+                        </button>
+                    </PropertyRow>
+                    {activeScene.cameraBounds?.enabled && (
+                        <>
+                            <div className="grid grid-cols-2 gap-2">
+                                <PropertyRow label="X Mínimo">
+                                    <CompactInput 
+                                        type="number" 
+                                        value={activeScene.cameraBounds.x ?? 0} 
+                                        onChange={val => onUpdateScene({ cameraBounds: { ...(activeScene.cameraBounds || { enabled: true, x: 0, y: 0, width: 1024, height: 768 }), x: Number(val) } })} 
+                                    />
+                                </PropertyRow>
+                                <PropertyRow label="Y Mínimo">
+                                    <CompactInput 
+                                        type="number" 
+                                        value={activeScene.cameraBounds.y ?? 0} 
+                                        onChange={val => onUpdateScene({ cameraBounds: { ...(activeScene.cameraBounds || { enabled: true, x: 0, y: 0, width: 1024, height: 768 }), y: Number(val) } })} 
+                                    />
+                                </PropertyRow>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <PropertyRow label="Ancho Límite">
+                                    <CompactInput 
+                                        type="number" 
+                                        value={activeScene.cameraBounds.width ?? 1024} 
+                                        onChange={val => onUpdateScene({ cameraBounds: { ...(activeScene.cameraBounds || { enabled: true, x: 0, y: 0, width: 1024, height: 768 }), width: Number(val) } })} 
+                                    />
+                                </PropertyRow>
+                                <PropertyRow label="Alto Límite">
+                                    <CompactInput 
+                                        type="number" 
+                                        value={activeScene.cameraBounds.height ?? 768} 
+                                        onChange={val => onUpdateScene({ cameraBounds: { ...(activeScene.cameraBounds || { enabled: true, x: 0, y: 0, width: 1024, height: 768 }), height: Number(val) } })} 
+                                    />
+                                </PropertyRow>
+                            </div>
+                            <button 
+                                onClick={() => {
+                                    onUpdateScene({ 
+                                        cameraBounds: { 
+                                            enabled: true, 
+                                            x: 0, 
+                                            y: 0, 
+                                            width: projectData.gameWidth || 1024, 
+                                            height: projectData.gameHeight || 768 
+                                        } 
+                                    });
+                                }}
+                                className="w-full py-1 border border-[#333333] hover:border-indigo-500 rounded text-[9px] uppercase font-bold text-gray-400 hover:text-indigo-400 text-center transition-all bg-[#2a2a2a]/40"
+                            >
+                                Ajustar al Tamaño del Juego
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
+
             {/* 3D Camera Configuration */}
             <SectionHeader 
                 title="Cámara 3D" 

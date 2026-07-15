@@ -49,6 +49,33 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
   const [activeCategory, setActiveCategory] = useState<string>('core');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
+  const [activeScriptCategory, setActiveScriptCategory] = useState<string>('All');
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('script_categories_' + scene?.id);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    // Derive initial categories from existing block events
+    const initial = new Set<string>(['General']);
+    if (scene?.events) {
+      scene.events.forEach(e => {
+        if (e.category && e.category.trim() !== '') {
+          initial.add(e.category.trim());
+        }
+      });
+    }
+    return Array.from(initial);
+  });
+
+  const saveCategories = (cats: string[]) => {
+    setCustomCategories(cats);
+    try {
+      localStorage.setItem('script_categories_' + (scene?.id || 'default'), JSON.stringify(cats));
+    } catch (e) {}
+  };
+
   // Lists of assets/objects for dropdowns
   const objectNames = useMemo(() => scene?.gameObjects.map(obj => obj.name) ?? [], [scene]);
   const globalObjectNames = useMemo(() => globalObjects?.map(obj => obj.name) ?? [], [globalObjects]);
@@ -64,6 +91,14 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
   const blockEvents = useMemo(() => {
     return (scene?.events || []).filter(e => e.programmingMode === 'blocks');
   }, [scene?.events]);
+
+  const filteredBlockEvents = useMemo(() => {
+    return blockEvents.filter(e => {
+      if (activeScriptCategory === 'All') return true;
+      if (activeScriptCategory === 'Uncategorized') return !e.category || e.category === 'General';
+      return e.category === activeScriptCategory;
+    });
+  }, [blockEvents, activeScriptCategory]);
 
   // Block Category Config
   const blockCategories = [
@@ -202,6 +237,7 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
     { action: 'SetBackgroundColor', label: 'Fijar fondo de escena a [color]', category: 'sceneUI', defaultObject: 'System', params: { color: '#000000' } },
     { action: 'SetCameraZoom', label: 'Fijar zoom de cámara a [zoomLevel]', category: 'sceneUI', defaultObject: 'System', params: { zoomLevel: '1' } },
     { action: 'SetUIText', label: 'Establecer texto UI a: [text]', category: 'sceneUI', defaultObject: '', params: { text: '' } },
+    { action: 'SetJoystickEnabled', label: 'Establecer Joystick activado: [enabled]', category: 'sceneUI', defaultObject: 'System', params: { enabled: true } },
     { action: 'ShowDialogue', label: 'Mostrar diálogo: [dialogueText]', category: 'sceneUI', defaultObject: 'System', params: { dialogueText: '¡Hola!' } },
     { action: 'ShowConsole', label: 'Mostrar consola de depuración', category: 'sceneUI', defaultObject: 'System' },
     
@@ -230,7 +266,8 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
       }],
       actions: [],
       dimension: '2D',
-      programmingMode: 'blocks'
+      programmingMode: 'blocks',
+      category: activeScriptCategory !== 'All' && activeScriptCategory !== 'Uncategorized' ? activeScriptCategory : 'General'
     };
     onAddEvent(newEvent);
     setSelectedEventId(newEvent.id);
@@ -645,6 +682,24 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
                   </select>
                 );
               }
+              case 'enabled': {
+                const val = params?.[paramName] !== false && params?.[paramName] !== 'false';
+                return (
+                  <select
+                    key={i}
+                    className="bg-black/40 border border-white/20 text-white rounded px-1 py-0.5 text-xs focus:outline-none"
+                    value={val ? 'true' : 'false'}
+                    onChange={(e) => {
+                      const update = { params: { ...params, [paramName]: e.target.value === 'true' } };
+                      if (type === 'condition') handleUpdateCondition(eventId, blockIdx, update);
+                      else handleUpdateAction(eventId, blockIdx, update);
+                    }}
+                  >
+                    <option value="true">Sí (Activar)</option>
+                    <option value="false">No (Desactivar)</option>
+                  </select>
+                );
+              }
               case 'visible': {
                 const val = params?.[paramName] !== false;
                 return (
@@ -884,9 +939,97 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
           </span>
         </div>
 
+        {/* Horizontal Categories Tabs */}
+        <div className="px-4 py-2 border-b border-white/5 bg-[#141829] flex items-center justify-between gap-4 shrink-0 overflow-x-auto scrollbar-thin">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-white/40 text-[11px] font-semibold flex items-center gap-1 mr-1">
+              <Layers size={12} className="text-indigo-400" />
+              Categorías de Scripts:
+            </span>
+            <button
+              onClick={() => setActiveScriptCategory('All')}
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                activeScriptCategory === 'All'
+                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm scale-105'
+                  : 'bg-white/5 border-white/5 text-white/60 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              Todos ({blockEvents.length})
+            </button>
+            <button
+              onClick={() => setActiveScriptCategory('Uncategorized')}
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                activeScriptCategory === 'Uncategorized'
+                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm scale-105'
+                  : 'bg-white/5 border-white/5 text-white/60 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              General ({blockEvents.filter(e => !e.category || e.category === 'General').length})
+            </button>
+            {customCategories.filter(c => c !== 'General').map(cat => {
+              const count = blockEvents.filter(e => e.category === cat).length;
+              return (
+                <div key={cat} className="flex items-center gap-1 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 transition-all pl-1 pr-2">
+                  <button
+                    onClick={() => setActiveScriptCategory(cat)}
+                    className={`px-2 py-0.5 rounded-full text-xs font-semibold transition-all ${
+                      activeScriptCategory === cat
+                        ? 'bg-indigo-600 border-none text-white shadow-sm scale-105'
+                        : 'text-white/60 hover:text-white'
+                    }`}
+                  >
+                    {cat} ({count})
+                  </button>
+                  {/* Delete category button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`¿Estás seguro de que quieres eliminar la categoría "${cat}"? Los scripts en ella volverán a General.`)) {
+                        const updated = customCategories.filter(c => c !== cat);
+                        saveCategories(updated);
+                        blockEvents.forEach(evt => {
+                          if (evt.category === cat) {
+                            onUpdateEvent({ ...evt, category: 'General' });
+                          }
+                        });
+                        if (activeScriptCategory === cat) {
+                          setActiveScriptCategory('All');
+                        }
+                      }
+                    }}
+                    title="Eliminar categoría"
+                    className="text-white/30 hover:text-red-400 text-[10px] ml-0.5 focus:outline-none"
+                  >
+                    &times;
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* Add Category Shortcut Button */}
+          <button
+            onClick={() => {
+              const name = prompt('Introduce el nombre de la nueva categoría para organizar tus scripts:');
+              if (name && name.trim() !== '') {
+                const trimmed = name.trim();
+                if (!customCategories.includes(trimmed)) {
+                  const updated = [...customCategories, trimmed];
+                  saveCategories(updated);
+                  setActiveScriptCategory(trimmed);
+                }
+              }
+            }}
+            className="px-2.5 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 rounded-md text-xs font-semibold flex items-center gap-1 shrink-0 border border-indigo-500/20 active:scale-95 transition-all"
+          >
+            <Plus size={12} />
+            Crear Categoría
+          </button>
+        </div>
+
         {/* Blocks Workspace Scroll View */}
         <div className="flex-grow overflow-y-auto p-4 space-y-6 min-h-0 bg-radial-gradient">
-          {blockEvents.map((event, sIdx) => {
+          {filteredBlockEvents.map((event, sIdx) => {
             const isSelected = selectedEventId === event.id;
             const mainCond = event.conditions[0] || { object: 'System', trigger: 'OnStart', params: {} };
             const triggerLabel = triggerPalette.find(tp => tp.trigger === mainCond.trigger)?.label || mainCond.trigger;
@@ -908,6 +1051,38 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
                 <div className="p-4 bg-yellow-500/10 rounded-t-xl border-b border-white/5 flex flex-col gap-2 relative">
                   {/* Script Controls */}
                   <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                    {/* Category Selector */}
+                    <div className="flex items-center gap-1 bg-[#111420]/80 border border-white/10 px-2 py-0.5 rounded text-white text-[11px] focus-within:border-indigo-500/50 transition-all">
+                      <span className="text-white/40 text-[9px] uppercase font-bold">Cat:</span>
+                      <select
+                        className="bg-transparent border-none text-white text-[11px] font-semibold focus:outline-none cursor-pointer pr-1 py-0 select-none"
+                        value={event.category || 'General'}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__new__') {
+                            const newCat = prompt('Introduce el nombre de la nueva categoría:');
+                            if (newCat && newCat.trim() !== '') {
+                              const trimmed = newCat.trim();
+                              if (!customCategories.includes(trimmed)) {
+                                const updated = [...customCategories, trimmed];
+                                saveCategories(updated);
+                              }
+                              onUpdateEvent({ ...event, category: trimmed });
+                            }
+                          } else {
+                            onUpdateEvent({ ...event, category: val });
+                          }
+                        }}
+                      >
+                        <option value="General" className="bg-[#111420] text-white">General</option>
+                        {customCategories.filter(c => c !== 'General').map(cat => (
+                          <option key={cat} value={cat} className="bg-[#111420] text-white">{cat}</option>
+                        ))}
+                        <option value="__new__" className="bg-[#111420] text-indigo-300 font-bold">+ Nueva categoría...</option>
+                      </select>
+                    </div>
+
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1063,6 +1238,24 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
               >
                 <Plus size={14} />
                 Crear bloque de inicio (Al iniciar escena)
+              </button>
+            </div>
+          )}
+
+          {/* Empty state for filtered workspace */}
+          {blockEvents.length > 0 && filteredBlockEvents.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-black/20 rounded-xl border border-dashed border-white/10">
+              <Layers size={40} className="text-indigo-400/60 mb-3" />
+              <h4 className="font-bold text-sm text-white/80 mb-1">No hay scripts en "{activeScriptCategory}"</h4>
+              <p className="text-xs text-white/40 max-w-sm mb-4">
+                No hay ningún script asignado a esta categoría todavía. Puedes mover scripts existentes aquí usando el menú desplegable "Cat" en la cabecera de cada script o crear un disparador nuevo en esta categoría.
+              </p>
+              <button
+                onClick={() => handleAddNewScript('OnStart', 'System')}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded transition-all flex items-center gap-1.5 shadow-md active:scale-95"
+              >
+                <Plus size={14} />
+                Crear script en esta categoría
               </button>
             </div>
           )}

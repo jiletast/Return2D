@@ -994,18 +994,18 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     newObject.parentId = null; newObject.vx = 0; newObject.vy = 0; newObject.grounded = false;
                     gameObjects.push(newObject);
                     break;
-                case 'SetJoystickEnabled':
-                    if (params?.enabled !== undefined) {
-                        const isEnabled = params.enabled === true || params.enabled === 'true';
-                        const joystickBase = document.getElementById('joystick-base');
-                        if (joystickBase) {
-                            joystickBase.style.display = isEnabled ? 'block' : 'none';
-                        }
+                case 'SetJoystickEnabled': {
+                    const rawVal = params?.enabled !== undefined ? params.enabled : params?.valueBoolean;
+                    const isEnabled = rawVal === true || rawVal === 'true' || rawVal === undefined;
+                    const joystickBase = document.getElementById('joystick-base');
+                    if (joystickBase) {
+                        joystickBase.style.display = isEnabled ? 'block' : 'none';
                     }
                     break;
-                case 'EnableBehavior':
-                    if (targetObj && targetObj.behaviors && params?.behaviorName) {
-                        const origBehavs = targetObj._originalBehaviors || targetObj.behaviors;
+                }
+                case 'EnableBehavior': {
+                    if (targetObj && (targetObj.behaviors || targetObj._originalBehaviors) && params?.behaviorName) {
+                        const origBehavs = targetObj._originalBehaviors || targetObj.behaviors || [];
                         origBehavs.forEach(b => {
                             if (b.name === params.behaviorName) {
                                 b.disabled = false;
@@ -1013,9 +1013,10 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         });
                     }
                     break;
-                case 'DisableBehavior':
-                    if (targetObj && targetObj.behaviors && params?.behaviorName) {
-                        const origBehavs = targetObj._originalBehaviors || targetObj.behaviors;
+                }
+                case 'DisableBehavior': {
+                    if (targetObj && (targetObj.behaviors || targetObj._originalBehaviors) && params?.behaviorName) {
+                        const origBehavs = targetObj._originalBehaviors || targetObj.behaviors || [];
                         origBehavs.forEach(b => {
                             if (b.name === params.behaviorName) {
                                 b.disabled = true;
@@ -1023,6 +1024,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         });
                     }
                     break;
+                }
                 case 'SetSkin':
                     if (targetObj) {
                         let url = params?.imageUrl;
@@ -1514,9 +1516,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             
             const joystickUpNow = joystickState.active && joystickState.angle > -135 && joystickState.angle < -45;
 
-            if (joystickUpNow && !joystickUpPreviousFrame) {
-                actionsPressed.jump = true;
-            }
             joystickUpPreviousFrame = joystickUpNow;
 
             if (joystickState.active) {
@@ -1563,8 +1562,30 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             if (keysPressed['space']) actionsPressed.jump = true;
             if (keysPressed['keyx']) actionsPressed.attack = true;
 
-            actionsPressed.jumpAction = actionsPressed.jump;
-            actionsPressed.attackAction = actionsPressed.attack;
+            // Handle single-press actions like jump and attack so holding the key/button doesn't trigger multiple jumps/attacks
+            if (actionsPressed.jump) {
+                if (!actionsPressed.jumpPressed) {
+                    actionsPressed.jumpAction = true;
+                    actionsPressed.jumpPressed = true;
+                } else {
+                    actionsPressed.jumpAction = false;
+                }
+            } else {
+                actionsPressed.jumpPressed = false;
+                actionsPressed.jumpAction = false;
+            }
+
+            if (actionsPressed.attack) {
+                if (!actionsPressed.attackPressed) {
+                    actionsPressed.attackAction = true;
+                    actionsPressed.attackPressed = true;
+                } else {
+                    actionsPressed.attackAction = false;
+                }
+            } else {
+                actionsPressed.attackPressed = false;
+                actionsPressed.attackAction = false;
+            }
             actionsPressed.runAction = actionsPressed.run;
 
             const controllablePlayers = gameObjects.filter(obj => 
@@ -2290,6 +2311,36 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 } else {
                     obj.x += (obj.vx || 0) * deltaTime;
                     obj.y += (obj.vy || 0) * deltaTime;
+                }
+
+                // Clamp to camera bounds if enabled and object is a player/moving character
+                if (currentScene?.cameraBounds?.enabled && !obj.isUI) {
+                    const hasMovement = (obj.behaviors || []).some(b => ['PlatformerCharacter', 'TopDownRPGMovement'].includes(b.name)) ||
+                                        ['player', 'jugador', 'jugador_1', 'player_1'].includes(obj.name.toLowerCase());
+                    if (hasMovement) {
+                        const bounds = currentScene.cameraBounds;
+                        const minX = bounds.x;
+                        const maxX = bounds.x + bounds.width - (obj.width || 0);
+                        const minY = bounds.y;
+                        const maxY = bounds.y + bounds.height - (obj.height || 0);
+
+                        if (obj.x < minX) {
+                            obj.x = minX;
+                            obj.vx = 0;
+                        }
+                        if (obj.x > maxX) {
+                            obj.x = maxX;
+                            obj.vx = 0;
+                        }
+                        if (obj.y < minY) {
+                            obj.y = minY;
+                            obj.vy = 0;
+                        }
+                        if (obj.y > maxY) {
+                            obj.y = maxY;
+                            obj.vy = 0;
+                        }
+                    }
                 }
             });
 
@@ -3241,14 +3292,23 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 uiContainer.appendChild(elem);
 
                 if (isControlButton) {
-                    const handlePress = e => { e.preventDefault(); actionsPressed[obj.controlAction] = true; actionsPressed[obj.controlAction + '_ui'] = true; };
-                    const handleRelease = e => { e.preventDefault(); actionsPressed[obj.controlAction] = false; actionsPressed[obj.controlAction + '_ui'] = false; };
+                    const handlePress = e => { 
+                        e.preventDefault(); 
+                        actionsPressed[obj.controlAction] = true; 
+                        actionsPressed[obj.controlAction + '_ui'] = true; 
+                    };
+                    const handleRelease = e => { 
+                        e.preventDefault(); 
+                        actionsPressed[obj.controlAction] = false; 
+                        actionsPressed[obj.controlAction + '_ui'] = false; 
+                    };
 
                     elem.addEventListener('mousedown', handlePress);
                     elem.addEventListener('mouseup', handleRelease);
                     elem.addEventListener('mouseleave', handleRelease);
                     elem.addEventListener('touchstart', handlePress, { passive: false });
                     elem.addEventListener('touchend', handleRelease, { passive: false });
+                    elem.addEventListener('touchcancel', handleRelease, { passive: false });
                 }
 
                 if (hasClickScript) {
@@ -3266,20 +3326,23 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 });
             });
             
-            if (window.projectData.joystick?.enabled) {
-                joystickSize = window.projectData.joystick.size || 120;
+            const joyConfig = window.projectData.joystick || { enabled: false, size: 120, position: 'left' };
+            if (joyConfig) {
+                joystickSize = joyConfig.size || 120;
                 const joystickBase = document.createElement('div');
+                joystickBase.id = 'joystick-base';
+                joystickBase.style.display = joyConfig.enabled ? 'block' : 'none';
                 const joystickHandle = document.createElement('div');
                 const handleSize = joystickSize / 2.4;
                 
                 joystickBase.style.position = 'absolute';
                 joystickBase.style.bottom = '40px';
-                joystickBase.style[window.projectData.joystick.position || 'left'] = '40px';
+                joystickBase.style[joyConfig.position || 'left'] = '40px';
                 joystickBase.style.width = joystickSize + 'px';
                 joystickBase.style.height = joystickSize + 'px';
-                joystickBase.style.backgroundColor = window.projectData.joystick.backgroundImageUrl ? 'transparent' : 'rgba(255, 255, 255, ' + (window.projectData.joystick.opacity ?? 0.1) + ')';
-                if (window.projectData.joystick.backgroundImageUrl) {
-                    joystickBase.style.backgroundImage = 'url(' + window.projectData.joystick.backgroundImageUrl + ')';
+                joystickBase.style.backgroundColor = joyConfig.backgroundImageUrl ? 'transparent' : 'rgba(255, 255, 255, ' + (joyConfig.opacity ?? 0.1) + ')';
+                if (joyConfig.backgroundImageUrl) {
+                    joystickBase.style.backgroundImage = 'url(' + joyConfig.backgroundImageUrl + ')';
                     joystickBase.style.backgroundSize = 'cover';
                     joystickBase.style.backgroundPosition = 'center';
                 }
@@ -3290,9 +3353,9 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 joystickHandle.style.position = 'absolute';
                 joystickHandle.style.width = handleSize + 'px';
                 joystickHandle.style.height = handleSize + 'px';
-                joystickHandle.style.backgroundColor = window.projectData.joystick.handleImageUrl ? 'transparent' : 'rgba(255, 255, 255, 0.3)';
-                if (window.projectData.joystick.handleImageUrl) {
-                    joystickHandle.style.backgroundImage = 'url(' + window.projectData.joystick.handleImageUrl + ')';
+                joystickHandle.style.backgroundColor = joyConfig.handleImageUrl ? 'transparent' : 'rgba(255, 255, 255, 0.3)';
+                if (joyConfig.handleImageUrl) {
+                    joystickHandle.style.backgroundImage = 'url(' + joyConfig.handleImageUrl + ')';
                     joystickHandle.style.backgroundSize = 'cover';
                     joystickHandle.style.backgroundPosition = 'center';
                 }

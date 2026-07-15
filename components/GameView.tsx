@@ -1087,15 +1087,15 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   });
               }
               break;
-          case 'SetJoystickEnabled':
-              if (params?.enabled !== undefined) {
-                  const isEnabled = params.enabled === true || params.enabled === 'true';
-                  setJoystickRuntimeEnabled(isEnabled);
-              }
+          case 'SetJoystickEnabled': {
+              const rawVal = params?.enabled !== undefined ? params.enabled : params?.valueBoolean;
+              const isEnabled = rawVal === true || rawVal === 'true' || rawVal === undefined;
+              setJoystickRuntimeEnabled(isEnabled);
               break;
-          case 'EnableBehavior':
-              if (targetObj && targetObj.behaviors && params?.behaviorName) {
-                  const origBehavs = targetObj._originalBehaviors || targetObj.behaviors;
+          }
+          case 'EnableBehavior': {
+              if (targetObj && (targetObj.behaviors || targetObj._originalBehaviors) && params?.behaviorName) {
+                  const origBehavs = targetObj._originalBehaviors || targetObj.behaviors || [];
                   origBehavs.forEach((b: any) => {
                       if (b.name === params.behaviorName) {
                           b.disabled = false;
@@ -1103,9 +1103,10 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   });
               }
               break;
-          case 'DisableBehavior':
-              if (targetObj && targetObj.behaviors && params?.behaviorName) {
-                  const origBehavs = targetObj._originalBehaviors || targetObj.behaviors;
+          }
+          case 'DisableBehavior': {
+              if (targetObj && (targetObj.behaviors || targetObj._originalBehaviors) && params?.behaviorName) {
+                  const origBehavs = targetObj._originalBehaviors || targetObj.behaviors || [];
                   origBehavs.forEach((b: any) => {
                       if (b.name === params.behaviorName) {
                           b.disabled = true;
@@ -1113,6 +1114,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   });
               }
               break;
+          }
           case 'SetSkin':
               if (targetObj) {
                   let url = params?.imageUrl;
@@ -1732,9 +1734,6 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
 
       const joystickUpNow = joystickState.current.active && joystickState.current.angle > -135 && joystickState.current.angle < -45;
       
-      if (joystickUpNow && !joystickUpPreviousFrame.current) {
-          actions.jump = true;
-      }
       joystickUpPreviousFrame.current = joystickUpNow;
 
       if (joystickState.current.active) {
@@ -2805,6 +2804,36 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
               obj.x += (obj.vx || 0) * deltaTime;
               obj.y += (obj.vy || 0) * deltaTime;
           }
+
+          // Clamp to camera bounds if enabled and object is a player/moving character
+          if (scene.cameraBounds?.enabled && !obj.isUI) {
+              const hasMovement = obj.behaviors?.some(b => ['PlatformerCharacter', 'TopDownRPGMovement'].includes(b.name)) ||
+                                  ['player', 'jugador', 'jugador_1', 'player_1'].includes(obj.name.toLowerCase());
+              if (hasMovement) {
+                  const bounds = scene.cameraBounds;
+                  const minX = bounds.x;
+                  const maxX = bounds.x + bounds.width - (obj.width || 0);
+                  const minY = bounds.y;
+                  const maxY = bounds.y + bounds.height - (obj.height || 0);
+
+                  if (obj.x < minX) {
+                      obj.x = minX;
+                      obj.vx = 0;
+                  }
+                  if (obj.x > maxX) {
+                      obj.x = maxX;
+                      obj.vx = 0;
+                  }
+                  if (obj.y < minY) {
+                      obj.y = minY;
+                      obj.vy = 0;
+                  }
+                  if (obj.y > maxY) {
+                      obj.y = maxY;
+                      obj.vy = 0;
+                  }
+              }
+          }
       });
 
       const allObjectsWithAbsPosForCollision = gameObjectsRef.current.map(o => ({...o, ...getObjectAbsolutePosition(o.id, objectsById)}));
@@ -3820,6 +3849,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                             onMouseLeave={handleRelease}
                             onTouchStart={handlePress}
                             onTouchEnd={handleRelease}
+                            onTouchCancel={handleRelease}
                             className="font-bold active:bg-indigo-500/70"
                         >
                             <span style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}>
@@ -3895,11 +3925,11 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   style={{
                       position: 'absolute',
                       bottom: '40px',
-                      [joystick.position || 'left']: '40px',
+                      [joystick?.position || 'left']: '40px',
                       width: `${joystickSize}px`,
                       height: `${joystickSize}px`,
-                      backgroundColor: joystick.backgroundImageUrl ? 'transparent' : `rgba(255, 255, 255, ${joystick.opacity ?? 0.1})`,
-                      backgroundImage: joystick.backgroundImageUrl ? `url(${joystick.backgroundImageUrl})` : 'none',
+                      backgroundColor: joystick?.backgroundImageUrl ? 'transparent' : `rgba(255, 255, 255, ${joystick?.opacity ?? 0.1})`,
+                      backgroundImage: joystick?.backgroundImageUrl ? `url(${joystick?.backgroundImageUrl})` : 'none',
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
                       borderRadius: '50%',
@@ -3914,8 +3944,8 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                           position: 'absolute',
                           width: `${joystickHandleSize}px`,
                           height: `${joystickHandleSize}px`,
-                          backgroundColor: joystick.handleImageUrl ? 'transparent' : 'rgba(255, 255, 255, 0.3)',
-                          backgroundImage: joystick.handleImageUrl ? `url(${joystick.handleImageUrl})` : 'none',
+                          backgroundColor: joystick?.handleImageUrl ? 'transparent' : 'rgba(255, 255, 255, 0.3)',
+                          backgroundImage: joystick?.handleImageUrl ? `url(${joystick?.handleImageUrl})` : 'none',
                           backgroundSize: 'cover',
                           backgroundPosition: 'center',
                           borderRadius: '50%',

@@ -219,6 +219,7 @@ export interface GameEvent {
   actions: Action[];
   dimension?: '2D' | '3D';
   programmingMode?: 'events' | 'blocks';
+  category?: string;
 }
 
 export interface Scene {
