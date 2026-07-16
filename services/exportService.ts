@@ -3599,3 +3599,246 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 </body>
 </html>`;
 };
+
+// Compression utilities to reduce exported HTML file size from MB to KB
+async function compressImageBase64(base64: string): Promise<string> {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        return base64;
+    }
+    
+    if (base64.length < 35000 || base64.includes('image/svg+xml')) {
+        return base64;
+    }
+
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            try {
+                const maxDim = 800;
+                let width = img.width;
+                let height = img.height;
+                
+                if (width <= 128 && height <= 128) {
+                    resolve(base64);
+                    return;
+                }
+
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) {
+                        height = Math.round((height * maxDim) / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width * maxDim) / height);
+                        height = maxDim;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    resolve(base64);
+                    return;
+                }
+
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(img, 0, 0, width, height);
+
+                let compressed = canvas.toDataURL('image/webp', 0.6);
+                
+                const isPngOrGif = base64.includes('image/png') || base64.includes('image/gif');
+                if ((!compressed.startsWith('data:image/webp') || compressed.length >= base64.length) && !isPngOrGif) {
+                    compressed = canvas.toDataURL('image/jpeg', 0.6);
+                }
+                
+                if (compressed.length < base64.length) {
+                    resolve(compressed);
+                } else {
+                    resolve(base64);
+                }
+            } catch (e) {
+                console.error('Image compression failed:', e);
+                resolve(base64);
+            }
+        };
+        img.onerror = () => {
+            resolve(base64);
+        };
+        img.src = base64;
+    });
+}
+
+function writeString(view: DataView, offset: number, string: string) {
+    for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+    }
+}
+
+function encodeWAV(audioBuffer: AudioBuffer): ArrayBuffer {
+    const sampleRate = audioBuffer.sampleRate;
+    const numChannels = audioBuffer.numberOfChannels;
+    const channelData = audioBuffer.getChannelData(0);
+    const numSamples = channelData.length;
+    
+    const buffer = new ArrayBuffer(44 + numSamples * 2);
+    const view = new DataView(buffer);
+    
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + numSamples * 2, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * 2, true);
+    view.setUint16(32, numChannels * 2, true);
+    view.setUint16(34, 16, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, numSamples * 2, true);
+    
+    let offset = 44;
+    for (let i = 0; i < numSamples; i++, offset += 2) {
+        const s = Math.max(-1, Math.min(1, channelData[i]));
+        const val = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        view.setInt16(offset, val, true);
+    }
+    
+    return buffer;
+}
+
+async function compressAudioBase64(base64: string): Promise<string> {
+    if (typeof window === 'undefined' || (!window.AudioContext && !(window as any).webkitAudioContext)) {
+        return base64;
+    }
+
+    if (base64.length < 68000) {
+        return base64;
+    }
+
+    try {
+        const parts = base64.split(',');
+        if (parts.length < 2) return base64;
+        const mimeMatch = parts[0].match(/data:(audio\/[^;]+);/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'audio/wav';
+        const binaryStr = atob(parts[1]);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioCtxClass();
+        const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
+        ctx.close();
+
+        // Resample to mono 16000Hz (highly compact and suitable for simple 2D game sounds/soundtracks)
+        const targetSampleRate = 16000;
+        const duration = audioBuffer.duration;
+        
+        const OfflineCtxClass = window.OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+        const offlineCtx = new OfflineCtxClass(1, duration * targetSampleRate, targetSampleRate);
+        
+        const source = offlineCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(offlineCtx.destination);
+        source.start();
+        
+        const resampledBuffer = await offlineCtx.startRendering();
+
+        const wavBytes = encodeWAV(resampledBuffer);
+        const blob = new Blob([wavBytes], { type: 'audio/wav' });
+        
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const result = reader.result as string;
+                if (result && result.length < base64.length) {
+                    resolve(result);
+                } else {
+                    resolve(base64);
+                }
+            };
+            reader.readAsDataURL(blob);
+        });
+    } catch (err) {
+        console.error('Audio compression failed, using original:', err);
+        return base64;
+    }
+}
+
+export async function compressProjectAssets(
+    projectData: ProjectData, 
+    onProgress?: (msg: string) => void
+): Promise<ProjectData> {
+    // Deep clone so we do not mutate the main editor state
+    const data = JSON.parse(JSON.stringify(projectData)) as ProjectData;
+    const compressionCache = new Map<string, string>();
+    const base64Values: { obj: any; key: string; value: string; typeHint?: string }[] = [];
+    
+    function scan(obj: any) {
+        if (!obj || typeof obj !== 'object') return;
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                const val = obj[key];
+                if (typeof val === 'string' && val.startsWith('data:')) {
+                    base64Values.push({ 
+                        obj, 
+                        key, 
+                        value: val,
+                        typeHint: obj.type || undefined
+                    });
+                } else if (typeof val === 'object') {
+                    scan(val);
+                }
+            }
+        }
+    }
+    
+    scan(data);
+    
+    if (base64Values.length === 0) {
+        return data;
+    }
+    
+    const total = base64Values.length;
+    let current = 0;
+    
+    for (const item of base64Values) {
+        current++;
+        const val = item.value;
+        
+        if (compressionCache.has(val)) {
+            item.obj[item.key] = compressionCache.get(val)!;
+            continue;
+        }
+        
+        const name = item.obj.name ? ` "${item.obj.name}"` : '';
+        if (onProgress) {
+            onProgress(`Reduciendo peso de recurso ${current}/${total}${name}...`);
+        }
+        
+        let compressed = val;
+        try {
+            if (val.startsWith('data:image/') || item.typeHint === 'image') {
+                compressed = await compressImageBase64(val);
+            } else if (val.startsWith('data:audio/') || item.typeHint === 'audio') {
+                compressed = await compressAudioBase64(val);
+            }
+        } catch (e) {
+            console.error('Compression of asset failed:', e);
+        }
+        
+        compressionCache.set(val, compressed);
+        item.obj[item.key] = compressed;
+    }
+    
+    if (onProgress) {
+        onProgress('¡Optimización completada!');
+    }
+    
+    return data;
+}

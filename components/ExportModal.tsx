@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ProjectData } from '../types';
-import { generateGameHTML } from '../services/exportService';
+import { generateGameHTML, compressProjectAssets } from '../services/exportService';
 import { useLanguage } from '../LanguageContext';
 
 interface ExportModalProps {
@@ -19,7 +19,41 @@ export const ExportModal: React.FC<ExportModalProps> = ({ onClose, projectData, 
     }
     return 'mi_juego_2d';
   });
-  const [generatedCode, setGeneratedCode] = useState(initialShowCode ? generateGameHTML(projectData) : '');
+  
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizationProgress, setOptimizationProgress] = useState('');
+  const [optimizedProjectData, setOptimizedProjectData] = useState<ProjectData | null>(null);
+  const [generatedCode, setGeneratedCode] = useState('');
+
+  const getOptimizedData = async (): Promise<ProjectData | null> => {
+    if (optimizedProjectData) return optimizedProjectData;
+    if (!projectData) return null;
+    
+    setIsOptimizing(true);
+    setOptimizationProgress('Iniciando optimizador de recursos...');
+    try {
+      const optimized = await compressProjectAssets(projectData, (msg) => {
+        setOptimizationProgress(msg);
+      });
+      setOptimizedProjectData(optimized);
+      return optimized;
+    } catch (err) {
+      console.error('Asset optimization failed:', err);
+      return projectData;
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialShowCode && projectData) {
+      getOptimizedData().then((optimized) => {
+        if (optimized) {
+          setGeneratedCode(generateGameHTML(optimized));
+        }
+      });
+    }
+  }, [initialShowCode, projectData]);
   
   const handleExport = async (platform: string) => {
       let extension = '.html';
@@ -27,7 +61,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ onClose, projectData, 
       let content: string | Blob = '';
 
       if (platform === 'HTML5') {
-          content = generateGameHTML(projectData);
+          const dataToUse = await getOptimizedData();
+          content = generateGameHTML(dataToUse);
           if (!content) { alert(t('export.noData') || 'No hay datos del proyecto'); return; }
           extension = '.html';
           mimeType = 'text/html';
@@ -81,9 +116,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({ onClose, projectData, 
       onClose();
   };
 
-  const handleHandleViewCode = (platform: 'HTML5' | 'JSON') => {
+  const handleHandleViewCode = async (platform: 'HTML5' | 'JSON') => {
     if (platform === 'HTML5') {
-        const htmlContent = generateGameHTML(projectData);
+        const dataToUse = await getOptimizedData();
+        const htmlContent = generateGameHTML(dataToUse);
         if (!htmlContent) {
             alert(t('export.noData') || 'No hay datos del proyecto');
             return;
@@ -141,7 +177,24 @@ export const ExportModal: React.FC<ExportModalProps> = ({ onClose, projectData, 
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-[#18181b] rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col border border-gray-800 max-h-[90vh]" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#18181b] rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col border border-gray-800 max-h-[90vh] relative overflow-hidden" onClick={e => e.stopPropagation()}>
+        {isOptimizing && (
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md flex flex-col items-center justify-center z-50 p-6 text-center">
+            <div className="relative flex items-center justify-center mb-6">
+              <div className="w-16 h-16 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
+              <div className="absolute w-10 h-10 rounded-full border-4 border-emerald-500/20 border-b-emerald-500 animate-spin [animation-direction:reverse]"></div>
+            </div>
+            <h3 className="text-lg font-black text-white uppercase tracking-wider mb-2">
+              Comprimiendo y Optimizando Recursos
+            </h3>
+            <p className="text-xs text-gray-400 font-mono max-w-md bg-gray-900/50 px-4 py-3 rounded-lg border border-gray-800">
+              {optimizationProgress}
+            </p>
+            <span className="text-[10px] text-gray-500 mt-4 leading-relaxed max-w-sm">
+              Reduciendo imágenes pesadas y pistas de audio para minimizar el peso del juego de MB a KB para una carga ultra rápida.
+            </span>
+          </div>
+        )}
         <header className="flex items-center justify-between p-5 border-b border-gray-800 shrink-0">
           <h2 className="text-lg font-black tracking-tight uppercase text-white">
             {showCode ? (viewType === 'HTML' ? t('export.codeTitle') : 'Código de Datos JSON') : t('export.title')}
