@@ -76,13 +76,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({ onClose, projectData, 
       const baseName = exportFileName.trim() || 'juego';
       const finalFilename = baseName.toLowerCase().endsWith(extension) ? baseName : baseName + extension;
 
-      // Try modern File System Access API (only if not in an iframe)
-      if ('showSaveFilePicker' in window && window.self === window.top) {
+      // Try modern File System Access API
+      if ('showSaveFilePicker' in window) {
           try {
               const handle = await (window as any).showSaveFilePicker({
                   suggestedName: finalFilename,
                   types: [{
-                      description: `${platform} File`,
+                      description: platform === 'JSON' ? 'JSON Project File' : 'HTML5 Game File',
                       accept: { [mimeType]: [extension] },
                   }],
               });
@@ -93,8 +93,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({ onClose, projectData, 
               onClose();
               return;
           } catch (err) {
+              // User cancelled or browser blocked
               if ((err as Error).name === 'AbortError') return;
-              console.error('File System Access API failed, falling back...', err);
+              console.warn('File System Access API failed or blocked, falling back to standard download:', err);
           }
       }
 

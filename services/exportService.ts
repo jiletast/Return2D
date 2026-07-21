@@ -35,6 +35,22 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         let runtimeBackgroundColor = '#111827';
         let interactionRequired = true;
         let selectedPlayerId = null;
+        let playerPressStates = {};
+        let joinedPlayers = { 1: true }; 
+        let lastPlayerInputTime = { 1: Date.now() };
+        let socket = null;
+        let myPlayerNumber = null;
+        let remotePlayers = {};
+        let lastEmitTime = 0;
+        let lastEmittedState = '';
+        let mpTag = null;
+        let mpTagForJoin = null;
+        let isMpPlatformer = false;
+
+        const isPlayerJoined = (pNum) => {
+            
+            return !!joinedPlayers[pNum];
+        };
         
         // Project Data
         let allScenes = [];
@@ -88,6 +104,72 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             });
             return map;
         };
+
+        const getActivePlayerNumber = () => { return 1; };
+
+        const getPlayerActions = (pNum) => {
+        const act = {
+            moveLeft: false,
+            moveRight: false,
+            moveUp: false,
+            moveDown: false,
+            jump: false,
+            jumpAction: false,
+            attack: false,
+            attackAction: false,
+            run: false,
+            moveHorizontalIntensity: 0
+        };
+
+        if (pNum === 1) {
+            act.moveLeft = actionsPressed.moveLeft || keysPressed['keya'] || keysPressed['arrowleft'];
+            act.moveRight = actionsPressed.moveRight || keysPressed['keyd'] || keysPressed['arrowright'];
+            act.moveUp = actionsPressed.moveUp || keysPressed['keyw'] || keysPressed['arrowup'];
+            act.moveDown = actionsPressed.moveDown || keysPressed['keys'] || keysPressed['arrowdown'];
+            act.jump = actionsPressed.jump || keysPressed['space'];
+            act.jumpAction = actionsPressed.jumpAction;
+            act.attack = actionsPressed.attack || keysPressed['keyx'] || keysPressed['keyf'];
+            act.attackAction = actionsPressed.attackAction;
+            act.run = actionsPressed.run || keysPressed['shift'] || keysPressed['shiftleft'];
+            act.moveHorizontalIntensity = actionsPressed.moveHorizontalIntensity;
+
+            if (act.moveHorizontalIntensity === 0) {
+                if (keysPressed['arrowleft'] || keysPressed['keya']) act.moveHorizontalIntensity -= 1;
+                if (keysPressed['arrowright'] || keysPressed['keyd']) act.moveHorizontalIntensity += 1;
+            }
+        }
+
+        if (!playerPressStates) playerPressStates = {};
+        if (!playerPressStates[pNum]) playerPressStates[pNum] = { jumpPressed: false, attackPressed: false };
+        
+        const state = playerPressStates[pNum];
+        if (act.jump) {
+            if (!state.jumpPressed) {
+                act.jumpAction = true;
+                state.jumpPressed = true;
+            } else {
+                act.jumpAction = false;
+            }
+        } else {
+            state.jumpPressed = false;
+            act.jumpAction = false;
+        }
+
+        if (act.attack) {
+            if (!state.attackPressed) {
+                act.attackAction = true;
+                state.attackPressed = true;
+            } else {
+                act.attackAction = false;
+            }
+        } else {
+            state.attackPressed = false;
+            act.attackAction = false;
+        }
+
+        act.moveHorizontalIntensity = Math.max(-1, Math.min(1, act.moveHorizontalIntensity));
+        return act;
+    };;
 
         const spawnFloatingFeedback = (obj, val, label) => {
             const numVal = Number(val);
@@ -437,6 +519,12 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                                 case 'down': targetObj.y += speed; break;
                             }
                         }
+                    }
+                    break;
+                case 'FollowObject':
+                    if (targetObj && params?.targetObjectName) {
+                        targetObj.followTarget = String(params.targetObjectName);
+                        targetObj.followSpeed = Number(params.speed || 100);
                     }
                     break;
                 case 'SetVelocityX':
@@ -947,8 +1035,10 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                  case 'SaveGame':
                     if (params?.slot) {
                         try {
+                            const joyBase = document.getElementById('joystick-base');
+                            const joystickEnabled = joyBase ? (joyBase.style.display !== 'none') : false;
                             localStorage.setItem('return-2d-save-' + params.slot, JSON.stringify({
-                                sceneName: currentScene.name, gameObjects, gameVariables, camera
+                                sceneName: currentScene.name, gameObjects, gameVariables, camera, joystickEnabled
                             }));
                         } catch (e) { console.error('Error saving game:', e); }
                     }
@@ -957,7 +1047,15 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     if (params?.slot) {
                         try {
                             const saved = JSON.parse(localStorage.getItem('return-2d-save-' + params.slot));
-                            if (saved) loadSceneByName(saved.sceneName, saved);
+                            if (saved) {
+                                loadSceneByName(saved.sceneName, saved);
+                                if (saved.joystickEnabled !== undefined) {
+                                    const joyBase = document.getElementById('joystick-base');
+                                    if (joyBase) {
+                                        joyBase.style.display = saved.joystickEnabled ? 'block' : 'none';
+                                    }
+                                }
+                            }
                         } catch(e) { console.error('Error loading game:', e); }
                     }
                     break;
@@ -1258,7 +1356,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 }
                 case 'IsOnGround': return obj && !!obj.grounded; case 'IsMoving': return obj && (obj.vx !== 0 || obj.vy !== 0);
                 case 'IsIdle': return obj && obj.vx === 0 && obj.vy === 0 && !!obj.grounded;
-                case 'IsRunning': return obj && obj.vx !== 0 && !!obj.grounded; case 'IsJumping': return obj && !obj.grounded;
+                case 'IsRunning': return obj && obj.vx !== 0 && !!obj.grounded; case 'IsJumping': return obj && !obj.grounded; case 'IsFalling': return obj && (obj.vy || 0) > 0 && !obj.grounded && !obj.isClimbing && !obj.parentId;
                 case 'IsClimbing': return obj && !!obj.isClimbing;
                 case 'IsLookingLeft': return obj && obj.direction === 'left';
                 case 'IsLookingRight': return obj && obj.direction === 'right';
@@ -1332,7 +1430,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         pickedObjects[objName] = validObj1;
                         pickedObjects[targetName] = validObj2;
 
-                    } else if (['OnObjectClicked', 'OnHealthDepleted', 'IsIdle', 'IsRunning', 'IsJumping', 'IsOnGround', 'IsMoving', 'CompareObjectVariable', 'CompareStat', 'CompareObjectBooleanVariable', 'OnAttack'].includes(cond.trigger)) {
+                    } else if (['OnObjectClicked', 'OnHealthDepleted', 'IsIdle', 'IsRunning', 'IsJumping', 'IsFalling', 'IsOnGround', 'IsMoving', 'CompareObjectVariable', 'CompareStat', 'CompareObjectBooleanVariable', 'OnAttack'].includes(cond.trigger)) {
                         
                         const objectName = cond.object;
                         const instancesToCheck = pickedObjects[objectName] || gameObjects.filter(o => o.name === objectName);
@@ -1480,6 +1578,12 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             const allObjectsWithAbsPosForPhysics = gameObjects.map(o => ({...o, ...getObjectAbsolutePosition(o.id, objectsById)}));
             
             allObjectsWithAbsPosForPhysics.forEach(obj => {
+                
+                if (mpTag) {
+                    const pNum = mpTag.properties?.playerNumber ?? 1;
+                    if (!isPlayerJoined(pNum)) return;
+                }
+
                 if (obj.behaviors?.some(b => b.name === 'Solid')) {
                     staticCollisionShapes.push({ ...getCollisionBox(obj), owner: obj });
                 }
@@ -1589,13 +1693,36 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             actionsPressed.runAction = actionsPressed.run;
 
             const controllablePlayers = gameObjects.filter(obj => 
-                !obj.isUI && obj.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement')
+                !obj.isUI && obj.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement' )
             );
             const currentControlledId = selectedPlayerId !== null && controllablePlayers.some(p => p.id === selectedPlayerId)
                 ? selectedPlayerId
                 : controllablePlayers[0]?.id;
 
             gameObjects.forEach(obj => {
+                
+                if (obj.followTarget) {
+                    console.log("Following:", obj.followTarget, "target:", gameObjects.find(o => o.name === obj.followTarget));
+                    const target = gameObjects.find(o => o.name === obj.followTarget);
+                    if (target) {
+                        const dx = target.x - obj.x;
+                        const dy = target.y - obj.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > 5) {
+                            const speed = obj.followSpeed || 100;
+                            const vx = (dx / dist) * speed * deltaTime;
+                            const vy = (dy / dist) * speed * deltaTime;
+                            obj.x += vx;
+                            obj.y += vy;
+                        }
+                    }
+                }
+
+                if (mpTagForJoin) {
+                    const pNum = mpTagForJoin.properties?.playerNumber ?? 1;
+                    if (!isPlayerJoined(pNum)) return;
+                }
+
                 if (obj.isProjectile) {
                     obj.x += (obj.vx || 0) * deltaTime;
                     obj.y += (obj.vy || 0) * deltaTime;
@@ -1873,10 +2000,19 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 
                 const isCurrentControlled = obj.id === currentControlledId;
 
+                
                 const platformer = obj.behaviors?.find(b => b.name === 'PlatformerCharacter');
-                if (platformer && isCurrentControlled) {
+                const hasRPGMovement = obj.behaviors?.some(b => b.name === 'TopDownRPGMovement');
+                const rpgMovement = obj.behaviors?.find(b => b.name === 'TopDownRPGMovement');
+
+                const isControllable = isCurrentControlled;
+
+                let activeActions = actionsPressed;
+                
+
+                if (platformer && !hasRPGMovement) {
                     let { speed, jumpForce } = platformer.properties;
-                    if (actionsPressed.run) {
+                    if (activeActions.run) {
                         speed *= 2;
                     }
                     
@@ -1894,56 +2030,69 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 
                     if (!isOverlappingLadder) {
                         obj.isClimbing = false;
-                    } else if (climber) {
-                        const climbUpInput = actionsPressed.moveUp || (actionsPressed.moveVerticalIntensity && actionsPressed.moveVerticalIntensity < -0.3);
-                        const climbDownInput = actionsPressed.moveDown || (actionsPressed.moveVerticalIntensity && actionsPressed.moveVerticalIntensity > 0.3);
+                    } else if (climber && isControllable) {
+                        const climbUpInput = activeActions.moveUp || (activeActions.moveVerticalIntensity && activeActions.moveVerticalIntensity < -0.3);
+                        const climbDownInput = activeActions.moveDown || (activeActions.moveVerticalIntensity && activeActions.moveVerticalIntensity > 0.3);
                         if (climbUpInput || climbDownInput) {
                             obj.isClimbing = true;
                         }
                     }
 
-                    if (obj.isClimbing && climber) {
-                        const climbSpeed = climber.properties?.speed ?? 100;
-                        obj.vx = (actionsPressed.moveHorizontalIntensity || 0) * speed;
-                        if ((obj.vx || 0) > 0) obj.direction = 'right';
-                        if ((obj.vx || 0) < 0) obj.direction = 'left';
+                    if (isControllable) {
+                        if (obj.isClimbing && climber) {
+                            const climbSpeed = climber.properties?.speed ?? 100;
+                            obj.vx = (activeActions.moveHorizontalIntensity || 0) * speed;
+                            if ((obj.vx || 0) > 0) obj.direction = 'right';
+                            if ((obj.vx || 0) < 0) obj.direction = 'left';
 
-                        const climbUpInput = actionsPressed.moveUp || (actionsPressed.moveVerticalIntensity && actionsPressed.moveVerticalIntensity < -0.3);
-                        const climbDownInput = actionsPressed.moveDown || (actionsPressed.moveVerticalIntensity && actionsPressed.moveVerticalIntensity > 0.3);
-                        if (climbUpInput) {
-                            obj.vy = -climbSpeed;
-                        } else if (climbDownInput) {
-                            obj.vy = climbSpeed;
+                            const climbUpInput = activeActions.moveUp || (activeActions.moveVerticalIntensity && activeActions.moveVerticalIntensity < -0.3);
+                            const climbDownInput = activeActions.moveDown || (activeActions.moveVerticalIntensity && activeActions.moveVerticalIntensity > 0.3);
+                            if (climbUpInput) {
+                                obj.vy = -climbSpeed;
+                            } else if (climbDownInput) {
+                                obj.vy = climbSpeed;
+                            } else {
+                                obj.vy = 0; // Hanger
+                            }
+
+                            if (activeActions.jumpAction) {
+                                obj.isClimbing = false;
+                                obj.vy = -jumpForce;
+                            }
                         } else {
-                            obj.vy = 0; // Hanger
-                        }
+                            obj.vx = (activeActions.moveHorizontalIntensity || 0) * speed;
+                            if ((obj.vx || 0) > 0) obj.direction = 'right';
+                            if ((obj.vx || 0) < 0) obj.direction = 'left';
 
-                        if (actionsPressed.jumpAction) {
-                            obj.isClimbing = false;
-                            obj.vy = -jumpForce;
+                            // Double Jump logic
+                            if (activeActions.jumpAction) {
+                                if (obj.grounded) {
+                                    obj.vy = -jumpForce;
+                                    obj.grounded = false;
+                                    obj.doubleJumped = false;
+                                } else if (!obj.doubleJumped && platformer.properties?.doubleJumpEnabled) {
+                                    obj.vy = -jumpForce;
+                                    obj.doubleJumped = true;
+                                }
+                            }
+                        }
+                        if (activeActions.attackAction) {
+                            frameAttacks.push({ name: obj.name, id: obj.id });
                         }
                     } else {
-                        obj.vx = (actionsPressed.moveHorizontalIntensity || 0) * speed;
-                        if ((obj.vx || 0) > 0) obj.direction = 'right';
-                        if ((obj.vx || 0) < 0) obj.direction = 'left';
-
-                        if (actionsPressed.jumpAction && obj.grounded) {
-                            obj.vy = -jumpForce;
-                            obj.grounded = false;
+                        obj.vx = 0;
+                        if (obj.isClimbing) {
+                            obj.vy = 0;
                         }
                     }
-                    if (actionsPressed.attackAction) {
-                        frameAttacks.push({ name: obj.name, id: obj.id });
-                    }
                 }
-                const rpgMovement = obj.behaviors?.find(b => b.name === 'TopDownRPGMovement');
                 if (rpgMovement) {
                     let { speed } = rpgMovement.properties;
-                    if (actionsPressed.run) {
+                    if (activeActions.run) {
                         speed *= 2;
                     }
                     
-                    if (isCurrentControlled) {
+                    if (isControllable) {
                         if (joystickState.active) {
                             const maxDistance = joystickSize / 2;
                             const intensity = joystickState.distance / maxDistance;
@@ -1957,10 +2106,10 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                             }
                         } else {
                             obj.vx = 0; obj.vy = 0;
-                            if (actionsPressed.moveLeft) { obj.vx = -speed; obj.direction = 'left'; }
-                            if (actionsPressed.moveRight) { obj.vx = speed; obj.direction = 'right'; }
-                            if (actionsPressed.moveUp) obj.vy = -speed;
-                            if (actionsPressed.moveDown) obj.vy = speed;
+                            if (activeActions.moveLeft) { obj.vx = -speed; obj.direction = 'left'; }
+                            if (activeActions.moveRight) { obj.vx = speed; obj.direction = 'right'; }
+                            if (activeActions.moveUp) obj.vy = -speed;
+                            if (activeActions.moveDown) obj.vy = speed;
                             
                             if (obj.vx !== 0 && obj.vy !== 0) {
                                 obj.vx /= Math.sqrt(2);
@@ -1983,17 +2132,19 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     }
 
                     // Unified automatic animations for Platformer and RPG characters
-                    const platBehav = obj.behaviors?.find(b => b.name === 'PlatformerCharacter');
+                    const platBehav = obj.behaviors?.find(b => b.name === 'PlatformerCharacter') || (isMpPlatformer ? mpTag : null);
                     const isPlayerControlled = platBehav || rpgMovement;
 
                     if (isPlayerControlled) {
+                        // Apply remote state if online and not me
+
                         const activeBehav = rpgMovement || platBehav;
                         const idleAnimId = activeBehav?.properties?.idleAnimId;
                         const runAnimId = activeBehav?.properties?.runAnimId;
                         const jumpAnimId = activeBehav?.properties?.jumpAnimId;
                         const attackAnimId = activeBehav?.properties?.attackAnimId;
 
-                        const isAttackingNow = actionsPressed.attackAction || frameAttacks.some(a => a.id === obj.id);
+                        const isAttackingNow = (isControllable && activeActions.attackAction) || frameAttacks.some(a => a.id === obj.id);
                         const nowTime = performance.now();
 
                         // 1. Resolve Attack Animation
@@ -2267,6 +2418,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                                         frameCollisions.push({ obj1Name: obj.name, obj2Name: solidShape.owner.name, type: 'OnVerticalCollision', obj1Id: obj.id, obj2Id: solidShape.owner.id });
                                         obj.y = surfaceY - verticalBox.height - (currentAbsPos.y - obj.y);
                                         obj.grounded = true;
+                                        obj.doubleJumped = false;
                                         obj.vy = 0;
                                         
                                         const platformObj = objectsById.get(solidShape.owner.id);
@@ -2293,6 +2445,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                                 if ((obj.vy || 0) > 0) {
                                     obj.y = solidShape.y - verticalBox.height - (currentAbsPos.y - obj.y);
                                     obj.grounded = true;
+                                    obj.doubleJumped = false;
                                     obj.vy = 0;
                                     
                                     const platformObj = objectsById.get(solidShape.owner.id);
@@ -2339,6 +2492,45 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                         if (obj.y > maxY) {
                             obj.y = maxY;
                             obj.vy = 0;
+                        }
+                    }
+                }
+
+                // Centralized Online Multiplayer sync for local player character in exported build
+                if (socket && isControllable) {
+                    const now = Date.now();
+                    const stateString = JSON.stringify({
+                        x: obj.x,
+                        y: obj.y,
+                        vx: obj.vx,
+                        vy: obj.vy,
+                        direction: obj.direction,
+                        isClimbing: obj.isClimbing,
+                        grounded: obj.grounded,
+                        actions: activeActions
+                    });
+                    
+                    const stateChanged = stateString !== lastEmittedState;
+                    const timeElapsed = now - lastEmitTime;
+                    
+                    if (stateChanged || timeElapsed >= 40) {
+                        lastEmitTime = now;
+                        lastEmittedState = stateString;
+                        
+                        if (socket && typeof socket.emit === 'function') {
+                            socket.emit('update-player', {
+                                roomId: currentScene.name || 'default-room',
+                                playerState: {
+                                    x: obj.x,
+                                    y: obj.y,
+                                    vx: obj.vx,
+                                    vy: obj.vy,
+                                    direction: obj.direction,
+                                    isClimbing: obj.isClimbing,
+                                    grounded: obj.grounded,
+                                    actions: activeActions
+                                }
+                            });
                         }
                     }
                 }
@@ -2628,8 +2820,10 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             });
             
             
-            const followCameraBehavior = gameObjects.find(o => o.behaviors?.some(b => b.name === 'FollowCamera'));
-            const followTarget = followCameraBehavior;
+            let followTarget = gameObjects.find(o => o.behaviors?.some(b => b.name === 'FollowCamera'));
+            if (!followTarget) {
+                followTarget = gameObjects.find(o => o.id === currentControlledId);
+            }
             
             if (followTarget) {
                 const absPos = getObjectAbsolutePosition(followTarget.id, objectsById);
@@ -2682,7 +2876,19 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 const absPos = getObjectAbsolutePosition(o.id, objectsById);
                 return { ...o, absX: absPos.x, absY: absPos.y };
             });
-            allDrawable.filter(o => !o.isUI).sort((a,b) => a.zIndex-b.zIndex).forEach(obj => renderObject(ctx, obj));
+            
+            allDrawable
+                .filter(o => {
+                    if (o.isUI) return false;
+                    
+                    if (mpTag) {
+                        const pNum = mpTag.properties?.playerNumber ?? 1;
+                        if (!isPlayerJoined(pNum)) return false;
+                    }
+                    return true;
+                })
+                .sort((a,b) => a.zIndex-b.zIndex)
+                .forEach(obj => renderObject(ctx, obj));
             
             // Update and render floating feedbacks in camera space
             floatingFeedbacks.forEach(f => {
@@ -2897,19 +3103,46 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         }
 
         function loadSceneByName(sceneName, savedState = null) {
+            console.log('loadSceneByName called', sceneName, allScenes);
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
             const sceneToLoad = allScenes.find(s => s.name === sceneName);
-            if (!sceneToLoad) return;
+            if (!sceneToLoad) {
+                console.error('Scene not found:', sceneName);
+                return;
+            }
             if (backgroundMusicPlayer) backgroundMusicPlayer.pause();
 
             lastTime = 0;
             currentScene = sceneToLoad;
+            
+            if (typeof io !== 'undefined' && window.MULTIPLAYER_SERVER) {
+                if (!socket) {
+                    socket = io(window.MULTIPLAYER_SERVER, { transports: ['websocket'] });
+                    socket.on('player-assigned', (pNum) => {
+                        myPlayerNumber = pNum;
+                    });
+                    socket.on('player-updated', ({ playerNumber, state }) => {
+                        remotePlayers[playerNumber] = state;
+                    });
+                    socket.on('player-disconnected', ({ playerNumber }) => {
+                        delete remotePlayers[playerNumber];
+                    });
+                } else {
+                    socket.emit('join-room', currentScene.name || 'default-room');
+                }
+            }
             
             if (savedState) {
                 gameObjects = savedState.gameObjects;
                 gameVariables = savedState.gameVariables;
                 camera = savedState.camera;
                 runtimeBackgroundColor = sceneToLoad.backgroundColor;
+                if (savedState.joystickEnabled !== undefined) {
+                    const joyBase = document.getElementById('joystick-base');
+                    if (joyBase) {
+                        joyBase.style.display = savedState.joystickEnabled ? 'block' : 'none';
+                    }
+                }
             } else {
                 runtimeBackgroundColor = currentScene.backgroundColor;
                 camera.zoom = currentScene.defaultZoom || 1;
@@ -2930,7 +3163,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 })));
                 
                 // Ensure global variables are initialized if not already present
-                (window.projectData.globalVariables || []).forEach(v => {
+                (window.projectData?.globalVariables || []).forEach(v => {
                     if (gameVariables[v.name] === undefined) gameVariables[v.name] = v.value;
                 });
 
@@ -2972,12 +3205,15 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         }
         
         async function startGame(data) {
+            console.log('startGame called', data);
             canvas.width = data.gameWidth || 1024;
             canvas.height = data.gameHeight || 768;
-            allScenes = data.scenes; 
-            assets = data.assets; 
-            animations = data.animations;
+            allScenes = data.scenes || []; 
+            assets = data.assets || []; 
+            animations = data.animations || [];
             globalObjects = data.globalObjects || [];
+
+            const firstScene = allScenes[0];
             
             const assetPromises = assets.map(asset => new Promise((resolve) => {
                 const timeoutId = setTimeout(() => {
@@ -3054,7 +3290,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
             });
             gameVariables = preservedVars;
             
-            const startingScene = data.scenes.find(s => s.id === data.activeSceneId);
+            const startingScene = data.scenes.find(s => s.id === data.activeSceneId) || data.scenes[0];
             if(startingScene) {
                 loadSceneByName(startingScene.name);
             }
@@ -3249,14 +3485,14 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 
                 if (obj.imageUrl) {
                     elem.style.backgroundImage = 'url(' + obj.imageUrl + ')';
-                    elem.style.backgroundSize = 'contain';
+                    elem.style.backgroundSize = '100% 100%';
                     elem.style.backgroundRepeat = 'no-repeat';
                     elem.style.backgroundPosition = 'center';
                 }
                 
                 if (isControlButton) {
-                    elem.style.border = '2px solid rgba(255,255,255,0.3)';
-                    elem.style.backgroundColor = 'rgba(0,0,0,0.4)';
+                    elem.style.border = obj.imageUrl ? 'none' : '2px solid rgba(255,255,255,0.3)';
+                    elem.style.backgroundColor = obj.imageUrl ? 'transparent' : 'rgba(0,0,0,0.4)';
                     elem.style.cursor = 'pointer';
                 } else {
                     elem.style.border = 'none';
@@ -3573,13 +3809,19 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 
     const imageRenderingStyle = projectData.hdRendering !== false ? 'auto' : 'pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges';
 
+    const minifyJS = (js: string) => {
+        return js;
+    };
+
+    const minifiedEngine = minifyJS(gameEngineScript);
+
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Return 2D Game</title>
-    <style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Juego Return 2D</title>
+        <style>
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #000; display: flex; justify-content: center; align-items: center; font-family: sans-serif; color: white; }
         #game-container { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
         canvas { display: block; image-rendering: ${imageRenderingStyle}; max-width: 100%; max-height: 100%; }
@@ -3594,14 +3836,15 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
     </div>
     <script>
         window.projectData = ${JSON.stringify(projectData || null).replace(/<\/script>/g, '<\\/script>')};
-        ${gameEngineScript}
+        window.MULTIPLAYER_SERVER = "${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}";
+        ${minifiedEngine}
     </script>
 </body>
 </html>`;
 };
 
 // Compression utilities to reduce exported HTML file size from MB to KB
-async function compressImageBase64(base64: string): Promise<string> {
+export async function compressImageBase64(base64: string): Promise<string> {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
         return base64;
     }
@@ -3709,7 +3952,7 @@ function encodeWAV(audioBuffer: AudioBuffer): ArrayBuffer {
     return buffer;
 }
 
-async function compressAudioBase64(base64: string): Promise<string> {
+export async function compressAudioBase64(base64: string): Promise<string> {
     if (typeof window === 'undefined' || (!window.AudioContext && !(window as any).webkitAudioContext)) {
         return base64;
     }
@@ -3770,6 +4013,205 @@ async function compressAudioBase64(base64: string): Promise<string> {
     }
 }
 
+export async function compressVideoBase64(base64: string): Promise<string> {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        return base64;
+    }
+
+    if (base64.length < 100000) {
+        return base64;
+    }
+
+    return new Promise((resolve) => {
+        let isResolved = false;
+        const done = (result: string) => {
+            if (!isResolved) {
+                isResolved = true;
+                resolve(result);
+            }
+        };
+
+        // Fallback safety timeout of 12 seconds per video
+        const safetyTimeout = setTimeout(() => {
+            console.warn('Video compression timed out, using original.');
+            done(base64);
+        }, 12000);
+
+        try {
+            const video = document.createElement('video');
+            video.muted = true;
+            video.playsInline = true;
+            video.crossOrigin = 'anonymous';
+
+            video.onloadedmetadata = () => {
+                try {
+                    const width = video.videoWidth;
+                    const height = video.videoHeight;
+                    const duration = video.duration || 5;
+
+                    if (!width || !height) {
+                        clearTimeout(safetyTimeout);
+                        done(base64);
+                        return;
+                    }
+
+                    // Target standard web resolution (max 480px width or height to preserve speed and avoid lag)
+                    const maxDim = 480;
+                    let targetW = width;
+                    let targetH = height;
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            targetH = Math.round((height * maxDim) / width);
+                            targetW = maxDim;
+                        } else {
+                            targetW = Math.round((width * maxDim) / height);
+                            targetH = maxDim;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = targetW;
+                    canvas.height = targetH;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        clearTimeout(safetyTimeout);
+                        done(base64);
+                        return;
+                    }
+
+                    // Ensure MediaRecorder and captureStream are supported
+                    if (typeof (canvas as any).captureStream !== 'function' || typeof window.MediaRecorder === 'undefined') {
+                        clearTimeout(safetyTimeout);
+                        done(base64);
+                        return;
+                    }
+
+                    // Capture stream at 15 FPS (perfect balance of smoothness and ultra-light file size)
+                    const stream = (canvas as any).captureStream(15);
+                    
+                    // Try to attach original audio if possible
+                    try {
+                        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+                        if (AudioCtxClass) {
+                            const audioCtx = new AudioCtxClass();
+                            const source = audioCtx.createMediaElementSource(video);
+                            const dest = audioCtx.createMediaStreamAudioDestination();
+                            source.connect(dest);
+                            const audioTrack = dest.stream.getAudioTracks()[0];
+                            if (audioTrack) {
+                                stream.addTrack(audioTrack);
+                            }
+                        }
+                    } catch (ae) {
+                        console.warn('Could not extract audio for compression, proceeding with video-only:', ae);
+                    }
+
+                    // Prepare MediaRecorder options
+                    const mimeTypes = [
+                        'video/webm;codecs=vp8',
+                        'video/webm',
+                        'video/mp4;codecs=avc1'
+                    ];
+                    let chosenMime = '';
+                    for (const mime of mimeTypes) {
+                        if (MediaRecorder.isTypeSupported(mime)) {
+                            chosenMime = mime;
+                            break;
+                        }
+                    }
+
+                    const options: any = { videoBitsPerSecond: 200000 }; // 200kbps (extremely optimized!)
+                    if (chosenMime) {
+                        options.mimeType = chosenMime;
+                    }
+
+                    const mediaRecorder = new MediaRecorder(stream, options);
+                    const chunks: Blob[] = [];
+
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data && event.data.size > 0) {
+                            chunks.push(event.data);
+                        }
+                    };
+
+                    let animationId: number;
+                    const drawLoop = () => {
+                        if (video.paused || video.ended) return;
+                        ctx.drawImage(video, 0, 0, targetW, targetH);
+                        animationId = requestAnimationFrame(drawLoop);
+                    };
+
+                    const stopAndFinish = () => {
+                        try {
+                            cancelAnimationFrame(animationId);
+                            if (mediaRecorder.state !== 'inactive') {
+                                mediaRecorder.stop();
+                            }
+                        } catch (e) {
+                            clearTimeout(safetyTimeout);
+                            done(base64);
+                        }
+                    };
+
+                    mediaRecorder.onstop = () => {
+                        try {
+                            clearTimeout(safetyTimeout);
+                            const blob = new Blob(chunks, { type: chosenMime || 'video/webm' });
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                const compressedResult = reader.result as string;
+                                if (compressedResult && compressedResult.length < base64.length) {
+                                    done(compressedResult);
+                                } else {
+                                    done(base64);
+                                }
+                            };
+                            reader.readAsDataURL(blob);
+                        } catch (e) {
+                            done(base64);
+                        }
+                    };
+
+                    mediaRecorder.start();
+                    video.play().catch(() => {
+                        // If autoplay fails, try again muted or fallback
+                        video.muted = true;
+                        video.play().catch(() => {
+                            stopAndFinish();
+                        });
+                    });
+
+                    // Start drawing frames
+                    animationId = requestAnimationFrame(drawLoop);
+
+                    video.onended = stopAndFinish;
+
+                    // Force finish if video loops or exceeds a reasonable limit (max 30 seconds for looping animations)
+                    setTimeout(stopAndFinish, Math.min(30, duration) * 1000 + 100);
+
+                } catch (innerErr) {
+                    console.error('Inner video compression processing failed:', innerErr);
+                    clearTimeout(safetyTimeout);
+                    done(base64);
+                }
+            };
+
+            video.onerror = () => {
+                clearTimeout(safetyTimeout);
+                done(base64);
+            };
+
+            video.src = base64;
+            video.load();
+
+        } catch (err) {
+            console.error('Video compression setup failed:', err);
+            clearTimeout(safetyTimeout);
+            done(base64);
+        }
+    });
+}
+
 export async function compressProjectAssets(
     projectData: ProjectData, 
     onProgress?: (msg: string) => void
@@ -3827,6 +4269,8 @@ export async function compressProjectAssets(
                 compressed = await compressImageBase64(val);
             } else if (val.startsWith('data:audio/') || item.typeHint === 'audio') {
                 compressed = await compressAudioBase64(val);
+            } else if (val.startsWith('data:video/') || item.typeHint === 'video') {
+                compressed = await compressVideoBase64(val);
             }
         } catch (e) {
             console.error('Compression of asset failed:', e);

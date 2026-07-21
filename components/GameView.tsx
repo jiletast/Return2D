@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+
 import type { Scene, GameObject, Animation, GameAsset, Behavior, Variable, Action, Condition, CollisionProperties, ProjectData } from '../types';
 
 export interface GameState {
@@ -116,6 +117,13 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
   const [dimensions, setDimensions] = useState({ width: initialGameWidth, height: initialGameHeight });
   const gameObjectsRef = useRef<GameObject[]>([]);
   const keysPressed = useRef<Record<string, boolean>>({});
+  const playerPressStates = useRef<Record<number, { jumpPressed: boolean; attackPressed: boolean }>>({});
+  
+  const myPlayerNumber = useRef<number | null>(null);
+  const remotePlayers = useRef<Record<number, any>>({});
+  const lastEmitTime = useRef<number>(0);
+  const lastEmittedState = useRef<string>('');
+  const selectedPlayerIdRef = useRef<number | null>(null);
   const actionsPressed = useRef<Record<string, any>>({});
   const gameVariables = useRef<Record<string, string | number | boolean>>({});
   const activeAnimations = useRef<Map<number, ActiveAnimation>>(new Map());
@@ -148,6 +156,9 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
     lifetime: number;
   }[]>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+  useEffect(() => {
+    selectedPlayerIdRef.current = selectedPlayerId;
+  }, [selectedPlayerId]);
   const [activeInteractable, setActiveInteractable] = useState<{ id: number; name: string; prompt: string } | null>(null);
   const activeInteractableRef = useRef<{ id: number; name: string; prompt: string } | null>(null);
 
@@ -483,6 +494,24 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                             case 'up': targetObj.y -= speed; break;
                             case 'down': targetObj.y += speed; break;
                         }
+                    }
+                }
+                break;
+          case 'FollowObject':
+                if (targetObj && params?.targetObjectName) {
+                    targetObj.followTarget = String(params.targetObjectName);
+                    targetObj.followSpeed = Number(params.speed || 100);
+                }
+                break;
+          case 'MoveInDirection':
+                if (targetObj && params?.direction && params?.speed != null) {
+                    const speed = Number(params.speed);
+                    const direction = (params.direction || '').toLowerCase();
+                    switch (direction) {
+                        case 'right': targetObj.vx = speed; break;
+                        case 'left': targetObj.vx = -speed; break;
+                        case 'up': targetObj.vy = -speed; break;
+                        case 'down': targetObj.vy = speed; break;
                     }
                 }
                 break;
@@ -865,6 +894,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                           gameObjects: gameObjectsRef.current,
                           gameVariables: gameVariables.current,
                           camera: camera.current,
+                          joystickEnabled: joystickRuntimeEnabled,
                       };
                       localStorage.setItem('return-2d-save-slot-' + action.params.slot, JSON.stringify(gameState));
                       console.log('Game saved to slot ' + action.params.slot);
@@ -879,12 +909,17 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                           const savedState = JSON.parse(savedStateJSON);
                           if (savedState.sceneName !== scene.name) {
                               sceneChangeRequested.current = true;
+                              localStorage.setItem('return-2d-pending-load-slot', action.params.slot);
                               onGoToScene(savedState.sceneName); 
+                          } else {
+                              gameObjectsRef.current = savedState.gameObjects;
+                              gameVariables.current = savedState.gameVariables;
+                              camera.current = savedState.camera;
+                              if (savedState.joystickEnabled !== undefined) {
+                                  setJoystickRuntimeEnabled(savedState.joystickEnabled);
+                              }
+                              console.log('Game loaded from slot ' + action.params.slot);
                           }
-                          gameObjectsRef.current = savedState.gameObjects;
-                          gameVariables.current = savedState.gameVariables;
-                          camera.current = savedState.camera;
-                          console.log('Game loaded from slot ' + action.params.slot);
                       }
                   } catch(e) { console.error('Error loading game state:', e); }
               }
@@ -1389,6 +1424,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
         case 'IsIdle': return obj && (obj.vx || 0) === 0 && (obj.vy || 0) === 0 && !!obj.grounded;
         case 'IsRunning': return obj && (obj.vx || 0) !== 0 && !!obj.grounded;
         case 'IsJumping': return obj && !obj.grounded;
+        case 'IsFalling': return obj && (obj.vy || 0) > 0 && !obj.grounded && !obj.isClimbing && !obj.parentId;
         case 'IsClimbing': return obj && !!obj.isClimbing;
         case 'IsLookingLeft': return obj && obj.direction === 'left';
         case 'IsLookingRight': return obj && obj.direction === 'right';
@@ -1485,7 +1521,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                 pickedObjects[objName] = validObj1;
                 pickedObjects[targetName!] = validObj2;
 
-            } else if (['OnObjectClicked', 'OnHealthDepleted', 'IsIdle', 'IsRunning', 'IsJumping', 'IsOnGround', 'IsMoving', 'CompareObjectVariable', 'CompareStat', 'CompareObjectBooleanVariable', 'OnAttack'].includes(cond.trigger)) {
+            } else if (['OnObjectClicked', 'OnHealthDepleted', 'IsIdle', 'IsRunning', 'IsJumping', 'IsFalling', 'IsOnGround', 'IsMoving', 'CompareObjectVariable', 'CompareStat', 'CompareObjectBooleanVariable', 'OnAttack'].includes(cond.trigger)) {
                 
                 const objectName = cond.object;
                 const instancesToCheck = pickedObjects[objectName] || objectMap.get(objectName) || [];
@@ -1520,42 +1556,68 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
     camera.current.x = (initialGameWidth || 1024) / 2;
     camera.current.y = (initialGameHeight || 768) / 2;
     
-    if (initialState) {
-        gameObjectsRef.current = JSON.parse(JSON.stringify(initialState.gameObjects));
-        gameVariables.current = JSON.parse(JSON.stringify(initialState.gameVariables));
-    } else {
-        gameObjectsRef.current = JSON.parse(JSON.stringify(scene.gameObjects.map(o => {
-            const hasHealthB = o.behaviors?.some(b => b.name === 'Health');
-            const bossB = o.behaviors?.find(b => b.name === 'Boss');
-            let stats = o.stats;
-            if (!stats) {
-                if (bossB) {
-                    const hp = Number(bossB.properties?.hp !== undefined ? bossB.properties.hp : 500);
-                    const maxHp = Number(bossB.properties?.maxHp !== undefined ? bossB.properties.maxHp : 500);
-                    stats = { hp, maxHp, attack: 15 };
-                } else if (hasHealthB) {
-                    stats = { hp: 100, maxHp: 100, attack: 10 };
+    let loadedFromPending = false;
+    try {
+        const pendingSlot = localStorage.getItem('return-2d-pending-load-slot');
+        if (pendingSlot) {
+            localStorage.removeItem('return-2d-pending-load-slot');
+            const savedStateJSON = localStorage.getItem('return-2d-save-slot-' + pendingSlot);
+            if (savedStateJSON) {
+                const savedState = JSON.parse(savedStateJSON);
+                if (savedState.sceneName === scene.name) {
+                    gameObjectsRef.current = JSON.parse(JSON.stringify(savedState.gameObjects));
+                    gameVariables.current = JSON.parse(JSON.stringify(savedState.gameVariables));
+                    camera.current = savedState.camera;
+                    if (savedState.joystickEnabled !== undefined) {
+                        setJoystickRuntimeEnabled(savedState.joystickEnabled);
+                    }
+                    loadedFromPending = true;
+                    console.log('Restored pending game state from slot ' + pendingSlot);
                 }
             }
-            return {
-                ...o,
-                vx: 0, vy: 0, grounded: false,
-                stats
-            };
-        })));
-        
-        const initialVars: Record<string, string | number | boolean> = {};
-        globalVariables.forEach(v => { initialVars[v.name] = v.value; });
-        // Only initialize variables if they haven't been set yet (to allow persistence across scenes)
-        if (Object.keys(gameVariables.current).length === 0) {
-            gameVariables.current = initialVars;
+        }
+    } catch (e) {
+        console.error('Error loading pending game state:', e);
+    }
+
+    if (!loadedFromPending) {
+        if (initialState) {
+            gameObjectsRef.current = JSON.parse(JSON.stringify(initialState.gameObjects));
+            gameVariables.current = JSON.parse(JSON.stringify(initialState.gameVariables));
         } else {
-            // Ensure any NEW global variables are added, but keep existing values
-            globalVariables.forEach(v => {
-                if (gameVariables.current[v.name] === undefined) {
-                    gameVariables.current[v.name] = v.value;
+            gameObjectsRef.current = JSON.parse(JSON.stringify(scene.gameObjects.map(o => {
+                const hasHealthB = o.behaviors?.some(b => b.name === 'Health');
+                const bossB = o.behaviors?.find(b => b.name === 'Boss');
+                let stats = o.stats;
+                if (!stats) {
+                    if (bossB) {
+                        const hp = Number(bossB.properties?.hp !== undefined ? bossB.properties.hp : 500);
+                        const maxHp = Number(bossB.properties?.maxHp !== undefined ? bossB.properties.maxHp : 500);
+                        stats = { hp, maxHp, attack: 15 };
+                    } else if (hasHealthB) {
+                        stats = { hp: 100, maxHp: 100, attack: 10 };
+                    }
                 }
-            });
+                return {
+                    ...o,
+                    vx: 0, vy: 0, grounded: false,
+                    stats
+                };
+            })));
+            
+            const initialVars: Record<string, string | number | boolean> = {};
+            globalVariables.forEach(v => { initialVars[v.name] = v.value; });
+            // Only initialize variables if they haven't been set yet (to allow persistence across scenes)
+            if (Object.keys(gameVariables.current).length === 0) {
+                gameVariables.current = initialVars;
+            } else {
+                // Ensure any NEW global variables are added, but keep existing values
+                globalVariables.forEach(v => {
+                    if (gameVariables.current[v.name] === undefined) {
+                        gameVariables.current[v.name] = v.value;
+                    }
+                });
+            }
         }
     }
     
@@ -1611,6 +1673,87 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+
+    const getActivePlayerNumber = () => {
+        const controllablePlayers = gameObjectsRef.current.filter(obj => 
+            !obj.isUI && obj.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement')
+        );
+        const currentControlledId = selectedPlayerIdRef.current !== null && controllablePlayers.some(p => p.id === selectedPlayerIdRef.current)
+            ? selectedPlayerIdRef.current
+            : controllablePlayers[0]?.id;
+            
+        if (!currentControlledId) return 1;
+        return 1;
+    };
+
+    const getPlayerActions = (pNum: number) => {
+        const act = {
+            moveLeft: false,
+            moveRight: false,
+            moveUp: false,
+            moveDown: false,
+            jump: false,
+            jumpAction: false,
+            attack: false,
+            attackAction: false,
+            run: false,
+            moveHorizontalIntensity: 0
+        };
+
+        if (pNum === 1) {
+            act.moveLeft = actionsPressed.current.moveLeft || keysPressed.current['keya'] || keysPressed.current['arrowleft'];
+            act.moveRight = actionsPressed.current.moveRight || keysPressed.current['keyd'] || keysPressed.current['arrowright'];
+            act.moveUp = actionsPressed.current.moveUp || keysPressed.current['keyw'] || keysPressed.current['arrowup'];
+            act.moveDown = actionsPressed.current.moveDown || keysPressed.current['keys'] || keysPressed.current['arrowdown'];
+            act.jump = actionsPressed.current.jump || keysPressed.current['space'];
+            act.jumpAction = actionsPressed.current.jumpAction;
+            act.attack = actionsPressed.current.attack || keysPressed.current['keyx'] || keysPressed.current['keyf'];
+            act.attackAction = actionsPressed.current.attackAction;
+            act.run = actionsPressed.current.run || keysPressed.current['shift'] || keysPressed.current['shiftleft'];
+            act.moveHorizontalIntensity = actionsPressed.current.moveHorizontalIntensity;
+
+            if (act.moveHorizontalIntensity === 0) {
+                if (keysPressed.current['arrowleft'] || keysPressed.current['keya']) act.moveHorizontalIntensity -= 1;
+                if (keysPressed.current['arrowright'] || keysPressed.current['keyd']) act.moveHorizontalIntensity += 1;
+            }
+        }
+
+        if (!playerPressStates.current) {
+            playerPressStates.current = {};
+        }
+        if (!playerPressStates.current[pNum]) {
+            playerPressStates.current[pNum] = { jumpPressed: false, attackPressed: false };
+        }
+
+        const state = playerPressStates.current[pNum];
+        if (act.jump) {
+            if (!state.jumpPressed) {
+                act.jumpAction = true;
+                state.jumpPressed = true;
+            } else {
+                act.jumpAction = false;
+            }
+        } else {
+            state.jumpPressed = false;
+            act.jumpAction = false;
+        }
+
+        if (act.attack) {
+            if (!state.attackPressed) {
+                act.attackAction = true;
+                state.attackPressed = true;
+            } else {
+                act.attackAction = false;
+            }
+        } else {
+            state.attackPressed = false;
+            act.attackAction = false;
+        }
+
+        act.moveHorizontalIntensity = Math.max(-1, Math.min(1, act.moveHorizontalIntensity));
+        
+        return act;
+    };;
 
     let lastTime = 0;
     let lastFrameTime = 0;
@@ -1682,11 +1825,11 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
       });
 
       const controllablePlayers = gameObjectsRef.current.filter(obj => 
-          !obj.isUI && obj.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement')
+          !obj.isUI && obj.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement' )
       );
       
-      const currentControlledId = selectedPlayerId !== null && controllablePlayers.some(p => p.id === selectedPlayerId)
-          ? selectedPlayerId
+      const currentControlledId = selectedPlayerIdRef.current !== null && controllablePlayers.some(p => p.id === selectedPlayerIdRef.current)
+          ? selectedPlayerIdRef.current
           : controllablePlayers[0]?.id;
 
       const objectsById = new Map<number, GameObject>(gameObjectsRef.current.map(o => [o.id, o]));
@@ -1810,6 +1953,21 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
       }
 
       gameObjectsRef.current.forEach(obj => {
+          if (obj.followTarget) {
+            const target = gameObjectsRef.current.find(o => o.name === obj.followTarget);
+            if (target) {
+                const dx = target.x - obj.x;
+                const dy = target.y - obj.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 5) { // Small threshold to stop jitter
+                    const speed = obj.followSpeed || 100;
+                    const vx = (dx / dist) * speed * deltaTime;
+                    const vy = (dy / dist) * speed * deltaTime;
+                    obj.x += vx;
+                    obj.y += vy;
+                }
+            }
+          }
           if (draggingRef.current && draggingRef.current.id === obj.id) {
               obj.vx = 0;
               obj.vy = 0;
@@ -2359,11 +2517,22 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
 
           const isCurrentControlled = currentControlledId === undefined || obj.id === currentControlledId;
 
-          const hasRPGMovement = obj.behaviors?.some(b => b.name === 'TopDownRPGMovement');
+          
+          
+          
+
           const platformer = obj.behaviors?.find(b => b.name === 'PlatformerCharacter');
+          const hasRPGMovement = obj.behaviors?.some(b => b.name === 'TopDownRPGMovement');
+          const rpgMovement = obj.behaviors?.find(b => b.name === 'TopDownRPGMovement');
+
+          const isControllable = isCurrentControlled;
+
+          let activeActions = actions;
+          
+
           if (platformer && !hasRPGMovement) {
               let { speed, jumpForce } = platformer.properties;
-              if (actions.run) {
+              if (activeActions.run) {
                   speed *= 2;
               }
 
@@ -2381,23 +2550,23 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
 
               if (!isOverlappingLadder) {
                   obj.isClimbing = false;
-              } else if (climber && isCurrentControlled) {
-                  const climbUpInput = actions.moveUp || (actions.moveVerticalIntensity && actions.moveVerticalIntensity < -0.3);
-                  const climbDownInput = actions.moveDown || (actions.moveVerticalIntensity && actions.moveVerticalIntensity > 0.3);
+              } else if (climber && isControllable) {
+                  const climbUpInput = activeActions.moveUp || (activeActions.moveVerticalIntensity && activeActions.moveVerticalIntensity < -0.3);
+                  const climbDownInput = activeActions.moveDown || (activeActions.moveVerticalIntensity && activeActions.moveVerticalIntensity > 0.3);
                   if (climbUpInput || climbDownInput) {
                       obj.isClimbing = true;
                   }
               }
 
-              if (isCurrentControlled) {
+              if (isControllable) {
                   if (obj.isClimbing && climber) {
                       const climbSpeed = climber.properties?.speed ?? 100;
-                      obj.vx = (actions.moveHorizontalIntensity || 0) * speed;
+                      obj.vx = (activeActions.moveHorizontalIntensity || 0) * speed;
                       if ((obj.vx || 0) > 0) obj.direction = 'right';
                       if ((obj.vx || 0) < 0) obj.direction = 'left';
 
-                      const climbUpInput = actions.moveUp || (actions.moveVerticalIntensity && actions.moveVerticalIntensity < -0.3);
-                      const climbDownInput = actions.moveDown || (actions.moveVerticalIntensity && actions.moveVerticalIntensity > 0.3);
+                      const climbUpInput = activeActions.moveUp || (activeActions.moveVerticalIntensity && activeActions.moveVerticalIntensity < -0.3);
+                      const climbDownInput = activeActions.moveDown || (activeActions.moveVerticalIntensity && activeActions.moveVerticalIntensity > 0.3);
                       if (climbUpInput) {
                           obj.vy = -climbSpeed;
                       } else if (climbDownInput) {
@@ -2406,21 +2575,29 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                           obj.vy = 0; // Hanger
                       }
 
-                      if (actions.jumpAction) {
+                      if (activeActions.jumpAction) {
                           obj.isClimbing = false;
                           obj.vy = -jumpForce;
                       }
                   } else {
-                      obj.vx = (actions.moveHorizontalIntensity || 0) * speed;
+                      obj.vx = (activeActions.moveHorizontalIntensity || 0) * speed;
                       if ((obj.vx || 0) > 0) obj.direction = 'right';
                       if ((obj.vx || 0) < 0) obj.direction = 'left';
 
-                      if (actions.jumpAction && obj.grounded) {
-                          obj.vy = -jumpForce;
+                      // Double Jump logic
+                      if (activeActions.jumpAction) {
+                          if (obj.grounded) {
+                              obj.vy = -jumpForce;
+                              obj.grounded = false;
+                              obj.doubleJumped = false;
+                          } else if (!obj.doubleJumped && platformer.properties?.doubleJumpEnabled) {
+                              obj.vy = -jumpForce;
+                              obj.doubleJumped = true;
+                          }
                       }
                   }
                   
-                  if (actions.attackAction) {
+                  if (isControllable && activeActions.attackAction) {
                       frameAttacks.current.push({ name: obj.name, id: obj.id });
                   }
               } else {
@@ -2431,14 +2608,13 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
               }
           }
 
-          const rpgMovement = obj.behaviors?.find(b => b.name === 'TopDownRPGMovement');
           if (rpgMovement) {
               let { speed } = rpgMovement.properties;
-              if (actions.run) {
+              if (activeActions.run) {
                   speed *= 2;
               }
               
-              if (isCurrentControlled) {
+              if (isControllable) {
                   if (joystickState.current.active) {
                       const joystickSize = joystick?.size ?? 120;
                       const maxDistance = joystickSize / 2;
@@ -2454,10 +2630,10 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   } else {
                       obj.vx = 0;
                       obj.vy = 0;
-                      if (actions.moveLeft) { obj.vx = -speed; obj.direction = 'left'; }
-                      if (actions.moveRight) { obj.vx = speed; obj.direction = 'right'; }
-                      if (actions.moveUp) obj.vy = -speed;
-                      if (actions.moveDown) obj.vy = speed;
+                      if (activeActions.moveLeft) { obj.vx = -speed; obj.direction = 'left'; }
+                      if (activeActions.moveRight) { obj.vx = speed; obj.direction = 'right'; }
+                      if (activeActions.moveUp) obj.vy = -speed;
+                      if (activeActions.moveDown) obj.vy = speed;
                       
                       if (obj.vx !== 0 && obj.vy !== 0) {
                           obj.vx /= Math.sqrt(2);
@@ -2484,13 +2660,15 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
               const isPlayerControlled = platBehav || rpgMovement;
 
               if (isPlayerControlled) {
+                  
+
                   const activeBehav = rpgMovement || platBehav;
                   const idleAnimId = activeBehav?.properties?.idleAnimId;
                   const runAnimId = activeBehav?.properties?.runAnimId;
                   const jumpAnimId = activeBehav?.properties?.jumpAnimId;
                   const attackAnimId = activeBehav?.properties?.attackAnimId;
 
-                  const isAttackingNow = (isCurrentControlled && actions.attackAction) || frameAttacks.current.some(a => a.id === obj.id);
+                  const isAttackingNow = (isControllable && activeActions.attackAction) || frameAttacks.current.some(a => a.id === obj.id);
                   const nowTime = performance.now();
 
                   // 1. Resolve Attack Animation
@@ -2834,7 +3012,8 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   }
               }
           }
-      });
+
+                });
 
       const allObjectsWithAbsPosForCollision = gameObjectsRef.current.map(o => ({...o, ...getObjectAbsolutePosition(o.id, objectsById)}));
       const nonUiObjects = allObjectsWithAbsPosForCollision.filter(o => !o.isUI && (o.isTouchable ?? true));
@@ -3053,6 +3232,9 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
       }
       
       let followTarget = gameObjectsRef.current.find(o => o.behaviors?.some(b => b.name === 'FollowCamera'));
+      if (!followTarget) {
+          followTarget = gameObjectsRef.current.find(o => o.id === currentControlledId);
+      }
       if (followTarget) {
           const followTargetWithAbsPos = {...followTarget, ...getObjectAbsolutePosition(followTarget.id, objectsById)};
           const collisionBox = getCollisionBox(followTargetWithAbsPos);
@@ -3103,8 +3285,14 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
 
       const renderedVideoUrls = new Set<string>();
 
-      allDrawableObjects.filter(o => !o.isUI).sort((a,b) => (a.zIndex || 0) - (b.zIndex || 0)).forEach(obj => {
-        if (obj.visible === false) return;
+      allDrawableObjects.filter(o => {
+        if (o.isUI) return false;
+        if (o.visible === false) return false;
+        
+        
+        
+        return true;
+      }).sort((a,b) => (a.zIndex || 0) - (b.zIndex || 0)).forEach(obj => {
         const tilemapBehavior = obj.behaviors?.find(b => b.name === 'Tilemap');
 
         if (tilemapBehavior && obj.imageUrl) {
@@ -3726,7 +3914,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
   }, [updateJoystickState]);
 
   const controllablePlayers = gameObjectsRef.current.filter(obj => 
-      !obj.isUI && obj.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement')
+      !obj.isUI && obj.behaviors?.some(b => b.name === 'PlatformerCharacter' || b.name === 'TopDownRPGMovement' )
   );
   
   const currentControlledId = selectedPlayerId !== null && controllablePlayers.some(p => p.id === selectedPlayerId)
@@ -3757,71 +3945,36 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
         </>
       )}
 
-      {typeof onExit === 'function' && controllablePlayers.length >= 2 && (
-          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[60] flex items-center bg-slate-900/95 border border-slate-700 p-1.5 rounded-full shadow-xl pointer-events-auto hover:border-indigo-500/55 transition-colors">
-              <span className="text-xs text-slate-400 px-3 border-r border-slate-700 font-semibold font-sans tracking-wide">Jugador Activo:</span>
-              <div className="flex gap-1 ml-2">
-                  {controllablePlayers.map((player) => {
-                      const isActive = (currentControlledId === player.id);
-                      return (
-                          <button
-                              key={player.id}
-                              onClick={() => setSelectedPlayerId(player.id)}
-                              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all duration-200 cursor-pointer ${
-                                  isActive 
-                                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30 scale-105' 
-                                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                              }`}
-                          >
-                              {player.name}
-                          </button>
-                      );
-                  })}
-              </div>
-          </div>
-      )}
-
-      <main ref={mainRef} className="flex-grow relative w-full h-full overflow-hidden flex justify-center items-center bg-black">
-        <canvas
-          ref={canvasRef}
-          width={gameWidth}
-          height={gameHeight}
-          style={{ width: '100%', height: '100%', touchAction: 'none', imageRendering: (projectData?.hdRendering !== false) ? 'auto' : 'pixelated' }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-        />
-        <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
-            <div className="absolute bottom-0 left-0 w-full h-24 bg-black/20 pointer-events-none"></div>
-            {uiObjects.sort((a,b) => (a.zIndex || 0) - (b.zIndex || 0)).map(obj => {
-                if (obj.visible === false) return null;
-                const isControlButton = !!obj.controlAction && obj.controlAction !== 'none';
+      <main className="relative flex-1 w-full flex items-center justify-center bg-black overflow-hidden pointer-events-none">
+        <canvas ref={canvasRef} width={gameWidth} height={gameHeight} className="block pointer-events-auto" style={{ imageRendering: (scene?.fourKRendering || scene?.hdRendering) ? 'auto' : 'pixelated', width: '100%', height: '100%', objectFit: 'contain' }} />
+        
+        {gameObjectsRef.current.filter(o => o.isUI && o.visible !== false).map(obj => {
+                const isControlButton = obj.name.toLowerCase().includes('btn') || obj.name.toLowerCase().includes('boton') || obj.name.toLowerCase().includes('button') || obj.controlAction;
+                const scaleX = obj.scaleX ?? 1;
+                const scaleY = obj.scaleY ?? 1;
+                const rotation = obj.rotation ?? 0;
                 
-                const scaleX = (obj.scaleX ?? 1) * (obj.animScaleX ?? 1) * (obj.direction === 'left' ? -1 : 1);
-                const scaleY = (obj.scaleY ?? 1) * (obj.animScaleY ?? 1) * (obj.flipY ? -1 : 1);
-
                 const style: React.CSSProperties = {
                     position: 'absolute',
-                    left: obj.x + (obj.animOffsetX || 0), top: obj.y + (obj.animOffsetY || 0),
-                    width: obj.width, height: obj.height,
-                    color: obj.color,
-                    zIndex: obj.zIndex ?? 0,
-                    opacity: obj.opacity ?? 1,
+                    left: `${obj.x}px`,
+                    top: `${obj.y}px`,
+                    width: `${obj.width}px`,
+                    height: `${obj.height}px`,
+                    backgroundColor: obj.imageUrl ? 'transparent' : (obj.isHealthBar ? 'transparent' : obj.color),
                     backgroundImage: obj.imageUrl ? `url(${obj.imageUrl})` : 'none',
-                    backgroundSize: 'contain',
-                    backgroundRepeat: 'no-repeat',
+                    backgroundSize: '100% 100%',
                     backgroundPosition: 'center',
-                    pointerEvents: isControlButton ? 'auto' : 'none',
+                    backgroundRepeat: 'no-repeat',
+                    zIndex: obj.zIndex,
+                    opacity: obj.opacity ?? 1,
                     display: 'flex',
-                    alignItems: 'center',
                     justifyContent: 'center',
-                    border: isControlButton ? '2px solid rgba(255,255,255,0.3)' : 'none',
-                    borderRadius: '0.5rem',
-                    backgroundColor: isControlButton ? 'rgba(0,0,0,0.4)' : (obj.color !== 'transparent' && !obj.imageUrl ? obj.color : 'transparent'),
-                    userSelect: 'none',
-                    transformOrigin: 'center',
-                    transform: `rotate(${(obj.rotation || 0) + (obj.animRotation || 0)}deg) scale(${scaleX}, ${scaleY})`,
+                    alignItems: 'center',
+                    color: obj.textColor || 'white',
+                    fontSize: `${obj.fontSize || 16}px`,
+                    pointerEvents: 'auto',
+                    transformOrigin: 'top left',
+                    transform: `rotate(${rotation}deg) scale(${scaleX}, ${scaleY})`,
                 };
                 
                 const handlePress = (e: React.MouseEvent | React.TouchEvent) => { 
@@ -4047,7 +4200,6 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                 </div>
               </div>
             )}
-        </div>
       </main>
     </div>
   );

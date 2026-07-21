@@ -142,6 +142,7 @@ export const ScratchBlocksEditor: React.FC<ScratchBlocksEditorProps> = ({
     { trigger: 'IsIdle', label: 'Si el objeto está quieto', category: 'objectState', defaultObject: '' },
     { trigger: 'IsRunning', label: 'Si el objeto está corriendo', category: 'objectState', defaultObject: '' },
     { trigger: 'IsJumping', label: 'Si el objeto está saltando', category: 'objectState', defaultObject: '' },
+    { trigger: 'IsFalling', label: 'Si el objeto está cayendo', category: 'objectState', defaultObject: '' },
     { trigger: 'IsOnGround', label: 'Si el objeto está en el suelo', category: 'objectState', defaultObject: '' },
     { trigger: 'IsMoving', label: 'Si el objeto está moviéndose', category: 'objectState', defaultObject: '' },
     { trigger: 'OnAttack', label: 'Al atacar', category: 'objectState', defaultObject: '' },

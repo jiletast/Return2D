@@ -93,6 +93,8 @@ export interface GameObject {
   // Boss & Projectile helper properties
   isProjectile?: boolean;
   projectileLifetime?: number;
+  followTarget?: string;
+  followSpeed?: number;
   bossSpeed?: number;
   bossJumpForce?: number;
   bossAttackInterval?: number;
@@ -119,6 +121,8 @@ export interface GameObject {
   isAttacking?: boolean; // For attack behavior state
   pendingMovements?: { direction: string; speed: number }[]; // For MoveObject action
   isClimbing?: boolean; // For ladder climbing behavior
+  doubleJumped?: boolean; // For double jump state
+  isFalling?: boolean; // For falling state
   oscillation?: {
     axis: 'x' | 'y';
     distance: number;
@@ -201,14 +205,14 @@ export interface Animation {
 
 export interface Condition {
   object: string;
-  trigger: 'OnStart' | 'OnCollisionWith' | 'OnKeyPress' | 'OnAnyKeyPress' | 'CompareVariable' | 'CompareBooleanVariable' | 'CompareObjectBooleanVariable' | 'OnObjectClicked' | 'IsIdle' | 'IsRunning' | 'IsJumping' | 'OnAttack' | 'OnVerticalCollision' | 'OnHorizontalCollision' | 'IsOnGround' | 'IsMoving' | 'OnMatchFound' | 'OnPlayerJoined' | 'OnPlayerLeft' | 'OnReceiveNetworkMessage' | 'IsMusicPlaying' | 'CompareStat' | 'CompareObjectVariable' | 'OnJoystickMove' | 'OnJoystickUp' | 'OnJoystickDown' | 'OnJoystickLeft' | 'OnJoystickRight' | 'OnButtonDown' | 'OnButtonUp' | 'OnTriggerDown' | 'OnTriggerUp' | 'OnConsoleCommand' | 'OnTimerElapsed' | 'EveryXSeconds' | 'Always' | 'OnDialogueEnd' | 'OnHealthDepleted' | 'IsMobile' | 'IsPC' | 'IsClimbing' | 'IsLookingLeft' | 'IsLookingRight' | 'OnInteract' | 'IsSceneUnlocked';
+  trigger: 'OnStart' | 'OnCollisionWith' | 'OnKeyPress' | 'OnAnyKeyPress' | 'CompareVariable' | 'CompareBooleanVariable' | 'CompareObjectBooleanVariable' | 'OnObjectClicked' | 'IsIdle' | 'IsRunning' | 'IsJumping' | 'IsFalling' | 'OnAttack' | 'OnVerticalCollision' | 'OnHorizontalCollision' | 'IsOnGround' | 'IsMoving' | 'OnMatchFound' | 'OnPlayerJoined' | 'OnPlayerLeft' | 'OnReceiveNetworkMessage' | 'IsMusicPlaying' | 'CompareStat' | 'CompareObjectVariable' | 'OnJoystickMove' | 'OnJoystickUp' | 'OnJoystickDown' | 'OnJoystickLeft' | 'OnJoystickRight' | 'OnButtonDown' | 'OnButtonUp' | 'OnTriggerDown' | 'OnTriggerUp' | 'OnConsoleCommand' | 'OnTimerElapsed' | 'EveryXSeconds' | 'Always' | 'OnDialogueEnd' | 'OnHealthDepleted' | 'IsMobile' | 'IsPC' | 'IsClimbing' | 'IsLookingLeft' | 'IsLookingRight' | 'OnInteract' | 'IsSceneUnlocked';
   target?: string;
   params?: Record<string, any>;
 }
 
 export interface Action {
   object: string; // Can be an object name, 'System', or 'Self' for object scripts
-  action: 'Destroy' | 'AddToVariable' | 'SetVariable' | 'SetBooleanVariable' | 'ToggleBooleanVariable' | 'SetObjectBooleanVariable' | 'ToggleObjectBooleanVariable' | 'GoToScene' | 'SetUIText' | 'SetObjectPosition' | 'TeleportToObject' | 'PlaySound' | 'SetBackgroundColor' | 'SetBackgroundMusic' | 'StopBackgroundMusic' | 'PauseBackgroundMusic' | 'ResumeBackgroundMusic' | 'SetBackgroundMusicVolume' | 'PlayAnimation' | 'ModifyStat' | 'ShowDialogue' | 'SetQuestState' | 'CreateMatch' | 'JoinMatch' | 'SendNetworkMessage' | 'SetPlayerName' | 'CreateObject' | 'PlayVideo' | 'PauseVideo' | 'StopVideo' | 'SaveGame' | 'LoadGame' | 'SetCameraZoom' | 'SetObjectVariable' | 'AddToObjectVariable' | 'StartTimer' | 'StopTimer' | 'MoveObject' | 'ForceJump' | 'TriggerAttack' | 'Attack' | 'SetParent' | 'RotateObject' | 'ScaleObject' | 'GenerateObjectAt' | 'OscillateObject' | 'OscillateScale' | 'RotateContinuously' | 'SetScale' | 'SetVelocityX' | 'SetVelocityY' | 'SetRotationSpeed' | 'SetScaleSpeedX' | 'SetScaleSpeedY' | 'MoveTo' | 'RotateTo' | 'ScaleTo' | 'SetVisible' | 'SetOpacity' | 'SetZIndex' | 'SetFlipX' | 'SetFlipY' | 'SlideTo' | 'SetDraggable' | 'ShowConsole' | 'GainHealth' | 'LoseHealth' | 'Knockback' | 'Shoot' | 'CreatePlayers' | 'DisconnectPlayers' | 'EnableCollision' | 'DisableCollision' | 'Wait' | 'SetSceneUnlocked' | 'EnableBehavior' | 'DisableBehavior' | 'SetJoystickEnabled' | 'SetSkin' | 'SetPlayerSkin';
+  action: 'Destroy' | 'AddToVariable' | 'SetVariable' | 'SetBooleanVariable' | 'ToggleBooleanVariable' | 'SetObjectBooleanVariable' | 'ToggleObjectBooleanVariable' | 'GoToScene' | 'SetUIText' | 'SetObjectPosition' | 'TeleportToObject' | 'PlaySound' | 'SetBackgroundColor' | 'SetBackgroundMusic' | 'StopBackgroundMusic' | 'PauseBackgroundMusic' | 'ResumeBackgroundMusic' | 'SetBackgroundMusicVolume' | 'PlayAnimation' | 'ModifyStat' | 'ShowDialogue' | 'SetQuestState' | 'CreateMatch' | 'JoinMatch' | 'SendNetworkMessage' | 'SetPlayerName' | 'CreateObject' | 'PlayVideo' | 'PauseVideo' | 'StopVideo' | 'SaveGame' | 'LoadGame' | 'SetCameraZoom' | 'SetObjectVariable' | 'AddToObjectVariable' | 'StartTimer' | 'StopTimer' | 'MoveObject' | 'ForceJump' | 'TriggerAttack' | 'Attack' | 'SetParent' | 'RotateObject' | 'ScaleObject' | 'GenerateObjectAt' | 'OscillateObject' | 'OscillateScale' | 'RotateContinuously' | 'SetScale' | 'SetVelocityX' | 'SetVelocityY' | 'SetRotationSpeed' | 'SetScaleSpeedX' | 'SetScaleSpeedY' | 'MoveTo' | 'RotateTo' | 'ScaleTo' | 'SetVisible' | 'SetOpacity' | 'SetZIndex' | 'SetFlipX' | 'SetFlipY' | 'SlideTo' | 'SetDraggable' | 'ShowConsole' | 'GainHealth' | 'LoseHealth' | 'Knockback' | 'Shoot' | 'CreatePlayers' | 'DisconnectPlayers' | 'EnableCollision' | 'DisableCollision' | 'Wait' | 'SetSceneUnlocked' | 'EnableBehavior' | 'DisableBehavior' | 'SetJoystickEnabled' | 'SetSkin' | 'SetPlayerSkin' | 'FollowObject' | 'MoveInDirection';
   params?: Record<string, any>;
   onCompleteActions?: Action[];
 }
@@ -240,6 +244,9 @@ export interface Scene {
   camera3DMode?: string;
   camera3DTargetId?: number;
   camera3DOffset?: { x: number; y: number; z: number };
+  maxPlayers?: number;
+  fourKRendering?: boolean;
+  hdRendering?: boolean;
 }
 
 export interface ProjectData {

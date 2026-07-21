@@ -53,6 +53,34 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
 
   const [localObjects, setLocalObjects] = useState(objects);
 
+  const centerView = useCallback(() => {
+    const sceneRect = sceneRef.current?.getBoundingClientRect();
+    if (!sceneRect) return;
+    
+    const pad = 40;
+    const fitZoomX = Math.max(0.1, (sceneRect.width - pad) / gameWidth);
+    const fitZoomY = Math.max(0.1, (sceneRect.height - pad) / gameHeight);
+    const fitZoom = Math.min(fitZoomX, fitZoomY, 1.1); // Cap at 110% to prevent over-stretching
+    
+    setZoom(fitZoom);
+    
+    const ox = (sceneRect.width / fitZoom - gameWidth) / 2;
+    const oy = (sceneRect.height / fitZoom - gameHeight) / 2;
+    setViewOffset({ x: ox, y: oy });
+  }, [gameWidth, gameHeight]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      centerView();
+    }, 150);
+    
+    window.addEventListener('resize', centerView);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', centerView);
+    };
+  }, [centerView, scene?.id]);
+
   const localObjectsWithAbsPos = useMemo((): GameObjectWithAbsPos[] => {
     const objectsById = new Map<number, GameObject>(localObjects.map(o => [o.id, o]));
     const posCache = new Map<number, { x: number; y: number }>();
@@ -607,7 +635,7 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
                 <span className="text-gray-300">{Math.round(zoom * 100)}%</span>
             </div>
             <button className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Settings"><Settings2 size={16} /></button>
-            <button className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Full View"><Maximize size={16} /></button>
+            <button onClick={centerView} className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Full View"><Maximize size={16} /></button>
         </div>
       </div>
 

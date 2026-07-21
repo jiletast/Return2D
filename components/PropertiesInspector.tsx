@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../LanguageContext';
 import { availableBehaviors } from '../behaviors/definitions';
+import { compressImageBase64, compressVideoBase64 } from '../services/exportService';
 
 const SectionHeader: React.FC<{ 
     title: string, 
@@ -95,7 +96,7 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
   const { t } = useLanguage();
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['transform', 'appearance', 'logic', 'scene', 'settings', 'collision', 'tilemap', 'objectVariables', 'globalVariables', 'uiSettings']));
   const [isSelectingAsset, setIsSelectingAsset] = useState(false);
-  const [selectingAssetType, setSelectingAssetType] = useState<'image' | 'video'>('image');
+  const [selectingAssetType, setSelectingAssetType] = useState<'image' | 'video' | 'audio'>('image');
   const [isAddingBehavior, setIsAddingBehavior] = useState(false);
   const [expandedBehaviors, setExpandedBehaviors] = useState<Set<string>>(new Set());
 
@@ -209,9 +210,14 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
 
   if (isSelectingAsset && selectedObject) {
     const isImage = selectingAssetType === 'image';
+    const isVideo = selectingAssetType === 'video';
+    const isAudio = selectingAssetType === 'audio';
+
     const imageAssets = projectData.assets?.filter(a => a.type === 'image') || [];
     const videoAssets = projectData.assets?.filter(a => a.type === 'video') || [];
-    const currentAssets = isImage ? imageAssets : videoAssets;
+    const audioAssets = projectData.assets?.filter(a => a.type === 'audio') || [];
+
+    const currentAssets = isImage ? imageAssets : isVideo ? videoAssets : audioAssets;
 
     return (
       <div className="flex flex-col h-full bg-[#202020] select-none border-l border-[#333333]">
@@ -224,41 +230,54 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
             <ArrowLeft size={16} />
           </button>
           <span className="text-[11px] font-bold uppercase tracking-widest text-gray-300">
-            {isImage ? 'Seleccionar Sprite' : 'Seleccionar Video'}
+            {isImage ? 'Seleccionar Sprite' : isVideo ? 'Seleccionar Video' : 'Seleccionar Audio'}
           </span>
         </div>
+        
+        {/* Tabs */}
+        <div className="flex border-b border-[#333333] bg-[#1a1a1a]">
+          {(['image', 'video', 'audio'] as const).map(type => (
+            <button 
+              key={type}
+              onClick={() => setSelectingAssetType(type)}
+              className={`flex-1 py-2 text-[10px] font-bold uppercase ${selectingAssetType === type ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
 
-        <div className="flex-grow p-4 overflow-y-auto custom-scrollbar space-y-4">
+        <div className="flex-grow p-2 overflow-y-auto custom-scrollbar space-y-2">
           {/* Subir archivo local */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-              {isImage ? 'Subir imagen desde dispositivo' : 'Subir video desde dispositivo'}
+          <div className="space-y-1">
+            <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">
+              Subir nuevo
             </label>
-            <label className="flex flex-col items-center justify-center border-2 border-dashed border-[#333333] hover:border-indigo-500 rounded-lg p-5 cursor-pointer bg-[#181818] text-gray-400 hover:text-white transition-all text-center">
-              {isImage ? <Upload size={20} className="text-indigo-400 mb-1.5" /> : <Video size={20} className="text-indigo-400 mb-1.5" />}
-              <span className="text-[11px] font-bold">{isImage ? 'Subir archivo de imagen' : 'Subir archivo de video'}</span>
-              <span className="text-[9px] text-gray-500 mt-1">{isImage ? 'Soporta PNG, JPG, GIF y SVG' : 'Soporta MP4, WebM y Ogg (con audio)'}</span>
+            <label className="flex items-center gap-2 border border-[#333333] hover:border-indigo-500 rounded p-2 cursor-pointer bg-[#181818] text-gray-400 hover:text-white transition-all text-center">
+              <Upload size={14} className="text-indigo-400" />
+              <span className="text-[10px] font-bold">Seleccionar archivo</span>
               <input 
                 type="file" 
-                accept={isImage ? "image/*" : "video/*"}
+                accept={isImage ? "image/*" : isVideo ? "video/*" : "audio/*"}
                 className="hidden" 
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   const reader = new FileReader();
-                  reader.onload = (fileEvent) => {
-                    const url = fileEvent.target?.result as string;
+                  reader.onload = async (fileEvent) => {
+                    let url = fileEvent.target?.result as string;
                     if (url && onAddAsset) {
+                      // Note: compression logic might need to adapt for audio
                       const newAsset: GameAsset = {
                         id: `asset_${Date.now()}`,
                         name: file.name,
-                        type: isImage ? 'image' : 'video',
+                        type: selectingAssetType,
                         url: url
                       };
                       onAddAsset(newAsset);
                       if (isImage) {
                         handleUpdate({ imageUrl: url, videoUrl: undefined, color: 'transparent' });
-                      } else {
+                      } else if (isVideo) {
                         handleUpdate({ videoUrl: url, imageUrl: undefined, color: 'transparent', videoLoop: true, videoAutoplay: true, videoMuted: false });
                       }
                       setIsSelectingAsset(false);
@@ -271,69 +290,58 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
           </div>
 
           {/* Grid de assets preestablecidos del proyecto */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-                {isImage ? `Galería de imágenes (${imageAssets.length})` : `Galería de videos (${videoAssets.length})`}
+          <div className="space-y-1">
+            <div className="flex justify-between items-center py-1">
+              <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">
+                Galería ({currentAssets.length})
               </label>
-              {((isImage && selectedObject.imageUrl) || (!isImage && selectedObject.videoUrl)) && (
+              {((isImage && selectedObject.imageUrl) || (isVideo && selectedObject.videoUrl)) && (
                 <button 
                   onClick={() => {
-                    if (isImage) {
-                      handleUpdate({ imageUrl: undefined, color: '#eab308' });
-                    } else {
-                      handleUpdate({ videoUrl: undefined, color: '#eab308' });
-                    }
+                    if (isImage) handleUpdate({ imageUrl: undefined, color: '#eab308' });
+                    else if (isVideo) handleUpdate({ videoUrl: undefined, color: '#eab308' });
                     setIsSelectingAsset(false);
                   }}
-                  className="text-[10px] text-red-400 hover:text-red-300 font-bold uppercase transition-colors"
+                  className="text-[9px] text-red-400 hover:text-red-300 font-bold uppercase transition-colors"
                 >
-                  {isImage ? 'Quitar Textura' : 'Quitar Video'}
+                  Quitar
                 </button>
               )}
             </div>
 
             {currentAssets.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 border border-dashed border-[#333333] rounded bg-[#181818]/60 text-gray-500">
-                {isImage ? <FileImage size={24} className="opacity-30 mb-2" /> : <Film size={24} className="opacity-30 mb-2" />}
-                <span className="text-[10px] uppercase font-bold tracking-wider">{isImage ? 'No hay imágenes' : 'No hay videos'}</span>
-                <span className="text-[9px] mt-0.5 text-center px-4 leading-relaxed">
-                  {isImage ? 'Sube una imagen local usando la opción de arriba.' : 'Sube un video local usando la opción de arriba.'}
-                </span>
+              <div className="flex flex-col items-center justify-center py-4 border border-dashed border-[#333333] rounded bg-[#181818]/60 text-gray-500">
+                <span className="text-[9px] uppercase font-bold tracking-wider">No hay elementos</span>
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-1">
                 {currentAssets.map((asset) => {
-                  const isCurrent = isImage ? selectedObject.imageUrl === asset.url : selectedObject.videoUrl === asset.url;
+                  const isCurrent = isImage ? selectedObject.imageUrl === asset.url : isVideo ? selectedObject.videoUrl === asset.url : false;
                   return (
                     <button
                       key={asset.id}
                       onClick={() => {
                         if (isImage) {
                           handleUpdate({ imageUrl: asset.url, videoUrl: undefined, color: 'transparent' });
-                        } else {
+                        } else if (isVideo) {
                           handleUpdate({ videoUrl: asset.url, imageUrl: undefined, color: 'transparent', videoLoop: true, videoAutoplay: true, videoMuted: false });
                         }
                         setIsSelectingAsset(false);
                       }}
-                      className={`aspect-square relative rounded border bg-[#151515] p-1 overflow-hidden group flex flex-col items-center justify-center transition-all ${
+                      className={`aspect-square relative rounded border bg-[#151515] p-0.5 overflow-hidden group flex items-center justify-center transition-all ${
                         isCurrent 
-                          ? 'border-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.3)] bg-indigo-950/20' 
+                          ? 'border-indigo-500 bg-indigo-950/20' 
                           : 'border-[#333333] hover:border-gray-500'
                       }`}
                       title={asset.name}
                     >
                       {isImage ? (
-                        <img src={asset.url} className="max-w-full max-h-full object-contain pointer-events-none" />
+                        <img src={asset.url} className="max-w-full max-h-full object-contain" />
                       ) : (
                         <div className="flex flex-col items-center justify-center">
-                          <Film size={20} className="text-indigo-400 mb-1 pointer-events-none" />
-                          <span className="text-[8px] text-gray-400 truncate max-w-full px-1 pointer-events-none">{asset.name}</span>
+                          {isAudio ? <Zap size={14} className="text-amber-400" /> : <Film size={14} className="text-indigo-400" />}
                         </div>
                       )}
-                      <div className="absolute inset-x-0 bottom-0 bg-black/80 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity truncate text-center text-[7px] text-gray-300 font-mono">
-                        {asset.name}
-                      </div>
                     </button>
                   );
                 })}
@@ -1057,8 +1065,21 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
                                                                 propertiesKeys.map(propKey => {
                                                                     const val = behavior.properties[propKey];
                                                                     const isAnimSelectKey = ['idleAnimId', 'runAnimId', 'jumpAnimId', 'attackAnimId'].includes(propKey);
+                                                                    const isPlayerNumKey = propKey === 'playerNumber';
+                                                                    const isMovementTypeKey = propKey === 'movementType';
                                                                     return (
-                                                                        <PropertyRow key={propKey} label={propKey === 'idleAnimId' ? 'Animación Reposo' : propKey === 'runAnimId' ? 'Animación Correr' : propKey === 'jumpAnimId' ? 'Animación Saltar' : propKey === 'attackAnimId' ? 'Animación Atacar' : propKey}>
+                                                                        <PropertyRow key={propKey} label={
+                                                                            propKey === 'idleAnimId' ? 'Animación Reposo' : 
+                                                                            propKey === 'runAnimId' ? 'Animación Correr' : 
+                                                                            propKey === 'jumpAnimId' ? 'Animación Saltar' : 
+                                                                            propKey === 'attackAnimId' ? 'Animación Atacar' : 
+                                                                            propKey === 'playerNumber' ? 'Número Jugador' :
+                                                                            propKey === 'movementType' ? 'Tipo Movimiento' :
+                                                                            propKey === 'speed' ? 'Velocidad' :
+                                                                            propKey === 'jumpForce' ? 'Fuerza de Salto' :
+                                                                            propKey === 'gravity' ? 'Gravedad' :
+                                                                            propKey
+                                                                        }>
                                                                             {isAnimSelectKey ? (
                                                                                 <select
                                                                                     value={val ?? ''}
@@ -1069,6 +1090,25 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
                                                                                     {(projectData?.animations ?? []).map(a => (
                                                                                         <option key={a.id} value={a.id}>{a.name}</option>
                                                                                     ))}
+                                                                                </select>
+                                                                            ) : isPlayerNumKey ? (
+                                                                                <select
+                                                                                    value={val ?? 1}
+                                                                                    onChange={(e) => handleUpdateBehaviorProperty(behavior.name, propKey, parseInt(e.target.value, 10))}
+                                                                                    className="w-full bg-[#161616] border border-[#2a2a2a] hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-1 text-[10px] font-semibold text-gray-200 focus:outline-none"
+                                                                                >
+                                                                                    {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+                                                                                        <option key={n} value={n}>Jugador {n}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            ) : isMovementTypeKey ? (
+                                                                                <select
+                                                                                    value={val ?? 'topdown'}
+                                                                                    onChange={(e) => handleUpdateBehaviorProperty(behavior.name, propKey, e.target.value)}
+                                                                                    className="w-full bg-[#161616] border border-[#2a2a2a] hover:border-[#444444] focus:border-indigo-500 rounded px-1.5 py-1 text-[10px] font-semibold text-gray-200 focus:outline-none"
+                                                                                >
+                                                                                    <option value="topdown">Top-Down RPG</option>
+                                                                                    <option value="platformer">Plataformas</option>
                                                                                 </select>
                                                                             ) : typeof val === 'boolean' ? (
                                                                                 <button 
@@ -1081,7 +1121,7 @@ const PropertiesInspector: React.FC<PropertiesInspectorProps> = ({
                                                                                 <CompactInput 
                                                                                     type={typeof val === 'number' ? 'number' : 'text'}
                                                                                     value={val ?? ''}
-                                                                                    onChange={(newVal) => handleUpdateBehaviorProperty(behavior.name, propKey, newVal)}
+                                                                                    onChange={(newVal) => handleUpdateBehaviorProperty(behavior.name, propKey, typeof val === 'number' ? Number(newVal) : newVal)}
                                                                                 />
                                                                             )}
                                                                         </PropertyRow>

@@ -58,6 +58,7 @@ const createNewProjectData = (t: (key: string) => string): ProjectData => {
         orientation: 'landscape',
         gameWidth: 1024,
         gameHeight: 768,
+        responsive: true,
         joystick: {
             enabled: true,
             position: 'left',
@@ -394,7 +395,7 @@ const AppContent: React.FC = () => {
                             activeSceneId={projectData?.activeSceneId ?? null}
                             onSelectScene={(id) => updateProjectData({ activeSceneId: id })}
                             onAddScene={() => {
-                                const newScene = createNewScene(`Scene ${projectData!.scenes.length + 1}`);
+                                const newScene = createNewScene(t('starter.sceneName') || `Scene ${projectData!.scenes.length + 1}`);
                                 updateProjectData({ scenes: [...projectData!.scenes, newScene], activeSceneId: newScene.id });
                             }}
                             onCloneScene={(sceneId) => {

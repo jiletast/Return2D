@@ -21,6 +21,7 @@ import {
   Cpu
 } from 'lucide-react';
 import { useLanguage } from '../LanguageContext';
+import { compressImageBase64, compressAudioBase64, compressVideoBase64 } from '../services/exportService';
 
 const ObjectTreeItem: React.FC<{ 
     obj: GameObject, 
@@ -218,6 +219,7 @@ const SceneHierarchy: React.FC<SceneHierarchyProps> = ({
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'scene' | 'project'>('scene');
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [showAssetsSection, setShowAssetsSection] = useState(true);
 
   const toggleExpand = (id: number) => {
     setExpandedIds(prev => {
@@ -626,104 +628,124 @@ const SceneHierarchy: React.FC<SceneHierarchyProps> = ({
                     ))}
                 </div>
 
-                <div className="flex justify-between items-center mb-2 px-1">
-                    <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest block">Recursos</span>
-                    <button 
-                        onClick={() => {
-                            const name = prompt("Nombre de la carpeta:");
-                            if (name && onUpdateProjectData && projectData) {
-                                const newFolder = { id: 'folder_' + Date.now(), name };
-                                onUpdateProjectData({ assetFolders: [...(projectData.assetFolders || []), newFolder] });
-                            }
-                        }}
-                        className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white"
-                        title="Nueva Carpeta"
-                    >
-                        <Plus size={14} />
-                    </button>
-                </div>
-
-                <div className="space-y-2 mb-2">
-                    {(projectData?.assetFolders || []).map((folder: any) => (
-                        <div 
-                            key={folder.id} 
-                            className="bg-[#222] border border-[#333] rounded p-1"
-                            onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                            onDrop={e => {
-                                e.preventDefault();
-                                const assetId = e.dataTransfer.getData('application/game-asset-id');
-                                if (assetId && onUpdateProjectData && projectData) {
-                                    onUpdateProjectData({
-                                        assets: projectData.assets.map(a => a.id === assetId ? { ...a, folderId: folder.id } : a)
-                                    });
+                <div className="flex justify-between items-center mb-2 px-1 border-t border-[#333333] pt-3 mt-2">
+                    <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setShowAssetsSection(!showAssetsSection)}>
+                      <span className="text-[10px] uppercase font-bold text-gray-400 tracking-widest block">Recursos</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#333] text-gray-300 font-mono">{assets.length}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button 
+                            onClick={() => setShowAssetsSection(!showAssetsSection)}
+                            className="px-2 py-0.5 text-[9px] font-bold uppercase rounded bg-[#2a2a2a] hover:bg-[#333] text-gray-300 transition-colors"
+                        >
+                            {showAssetsSection ? 'Ocultar' : 'Mostrar'}
+                        </button>
+                        <button 
+                            onClick={() => {
+                                const name = prompt("Nombre de la carpeta:");
+                                if (name && onUpdateProjectData && projectData) {
+                                    const newFolder = { id: 'folder_' + Date.now(), name };
+                                    onUpdateProjectData({ assetFolders: [...(projectData.assetFolders || []), newFolder] });
                                 }
                             }}
+                            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white"
+                            title="Nueva Carpeta"
                         >
-                            <div className="text-[10px] font-bold text-gray-400 p-1 flex justify-between items-center">
-                                <span>📁 {folder.name}</span>
-                                <button onClick={() => {
-                                    if (confirm("¿Borrar carpeta y sus recursos?")) {
-                                        onUpdateProjectData?.({
-                                            assetFolders: projectData.assetFolders.filter((f: any) => f.id !== folder.id),
-                                            assets: projectData.assets.filter(a => a.folderId !== folder.id)
-                                        });
-                                    }
-                                }} className="text-red-500 hover:text-red-400"><Trash2 size={10} /></button>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 mt-1">
-                                {assets.filter(a => a.folderId === folder.id).map(asset => (
-                                    <div 
-                                        key={asset.id} 
-                                        draggable
-                                        onDragStart={(e) => {
-                                            e.dataTransfer.setData('application/game-asset', JSON.stringify(asset));
-                                            e.dataTransfer.setData('application/game-asset-id', asset.id);
-                                        }}
-                                        className="bg-[#2a2a2a] border border-[#333333] hover:border-indigo-500 rounded p-2 flex flex-col items-center gap-1 cursor-grab transition-all"
-                                    >
-                                        {asset.type === 'image' && <img src={asset.url} className="w-8 h-8 object-contain pointer-events-none" />}
-                                        {asset.type === 'video' && <Video size={20} className="text-blue-400" />}
-                                        {asset.type === 'audio' && <Music size={20} className="text-teal-400" />}
-                                        {asset.type === '3d-model' && <Box size={20} className="text-pink-400 animate-pulse" />}
-                                        <span className="text-[9px] truncate w-full text-center text-gray-400">{asset.name}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
+                            <Plus size={14} />
+                        </button>
+                    </div>
                 </div>
 
-                <div 
-                    className="grid grid-cols-2 gap-2 min-h-[40px] p-1 rounded"
-                    onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                    onDrop={e => {
-                        e.preventDefault();
-                        const assetId = e.dataTransfer.getData('application/game-asset-id');
-                        if (assetId && onUpdateProjectData && projectData) {
-                            onUpdateProjectData({
-                                assets: projectData.assets.map(a => a.id === assetId ? { ...a, folderId: null } : a)
-                            });
-                        }
-                    }}
-                >
-                    {assets.filter(a => !a.folderId).map(asset => (
-                        <div 
-                            key={asset.id} 
-                            draggable
-                            onDragStart={(e) => {
-                                e.dataTransfer.setData('application/game-asset', JSON.stringify(asset));
-                                e.dataTransfer.setData('application/game-asset-id', asset.id);
-                            }}
-                            className="bg-[#2a2a2a] border border-[#333333] hover:border-indigo-500 rounded p-2 flex flex-col items-center gap-1 cursor-grab transition-all"
-                        >
-                            {asset.type === 'image' && <img src={asset.url} className="w-8 h-8 object-contain pointer-events-none" />}
-                            {asset.type === 'video' && <Video size={20} className="text-blue-400" />}
-                            {asset.type === 'audio' && <Music size={20} className="text-teal-400" />}
-                            {asset.type === '3d-model' && <Box size={20} className="text-pink-400 animate-pulse" />}
-                            <span className="text-[9px] truncate w-full text-center text-gray-400">{asset.name}</span>
-                        </div>
-                    ))}
-                </div>
+                {showAssetsSection && (
+                  <>
+                    <div className="space-y-2 mb-2">
+                        {(projectData?.assetFolders || []).map((folder: any) => (
+                            <div 
+                                key={folder.id} 
+                                className="bg-[#222] border border-[#333] rounded p-1"
+                                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                                onDrop={e => {
+                                    e.preventDefault();
+                                    const assetId = e.dataTransfer.getData('application/game-asset-id');
+                                    if (assetId && onUpdateProjectData && projectData) {
+                                        onUpdateProjectData({
+                                            assets: projectData.assets.map(a => a.id === assetId ? { ...a, folderId: folder.id } : a)
+                                        });
+                                    }
+                                }}
+                            >
+                                <div className="text-[10px] font-bold text-gray-400 p-1 flex justify-between items-center">
+                                    <span>📁 {folder.name}</span>
+                                    <button onClick={() => {
+                                        if (confirm("¿Borrar carpeta y sus recursos?")) {
+                                            onUpdateProjectData?.({
+                                                assetFolders: projectData.assetFolders.filter((f: any) => f.id !== folder.id),
+                                                assets: projectData.assets.filter(a => a.folderId !== folder.id)
+                                            });
+                                        }
+                                    }} className="text-red-500 hover:text-red-400"><Trash2 size={10} /></button>
+                                </div>
+                                <div className="grid grid-cols-4 gap-1 mt-1">
+                                    {assets.filter(a => a.folderId === folder.id).map(asset => (
+                                        <div 
+                                            key={asset.id} 
+                                            draggable
+                                            onDragStart={(e) => {
+                                                e.dataTransfer.setData('application/game-asset', JSON.stringify(asset));
+                                                e.dataTransfer.setData('application/game-asset-id', asset.id);
+                                            }}
+                                            className="bg-[#2a2a2a] border border-[#333333] hover:border-indigo-500 rounded p-1 flex flex-col items-center gap-0.5 cursor-grab transition-all"
+                                            title={asset.name}
+                                        >
+                                            {asset.type === 'image' && <img src={asset.url} className="w-6 h-6 object-contain pointer-events-none" />}
+                                            {asset.type === 'video' && <Video size={14} className="text-blue-400" />}
+                                            {asset.type === 'audio' && <Music size={14} className="text-teal-400" />}
+                                            {asset.type === '3d-model' && <Box size={14} className="text-pink-400 animate-pulse" />}
+                                            <span className="text-[8px] truncate w-full text-center text-gray-400">{asset.name}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div 
+                        className="grid grid-cols-4 gap-1 min-h-[30px] p-1 rounded bg-[#1a1a1a]/50 border border-dashed border-[#333]"
+                        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                        onDrop={e => {
+                            e.preventDefault();
+                            const assetId = e.dataTransfer.getData('application/game-asset-id');
+                            if (assetId && onUpdateProjectData && projectData) {
+                                onUpdateProjectData({
+                                    assets: projectData.assets.map(a => a.id === assetId ? { ...a, folderId: null } : a)
+                                });
+                            }
+                        }}
+                    >
+                        {assets.filter(a => !a.folderId).map(asset => (
+                            <div 
+                                key={asset.id} 
+                                draggable
+                                onDragStart={(e) => {
+                                    e.dataTransfer.setData('application/game-asset', JSON.stringify(asset));
+                                    e.dataTransfer.setData('application/game-asset-id', asset.id);
+                                }}
+                                className="bg-[#2a2a2a] border border-[#333333] hover:border-indigo-500 rounded p-1 flex flex-col items-center gap-0.5 cursor-grab transition-all"
+                                title={asset.name}
+                            >
+                                {asset.type === 'image' && <img src={asset.url} className="w-6 h-6 object-contain pointer-events-none" />}
+                                {asset.type === 'video' && <Video size={14} className="text-blue-400" />}
+                                {asset.type === 'audio' && <Music size={14} className="text-teal-400" />}
+                                {asset.type === '3d-model' && <Box size={14} className="text-pink-400 animate-pulse" />}
+                                <span className="text-[8px] truncate w-full text-center text-gray-400">{asset.name}</span>
+                            </div>
+                        ))}
+                        {assets.length === 0 && (
+                            <div className="col-span-4 text-[8px] text-gray-500 text-center py-2">No hay recursos</div>
+                        )}
+                    </div>
+                  </>
+                )}
                 <div className="mt-2 flex gap-1">
                     <button 
                       onClick={() => onOpenSpriteEditor(null)}
@@ -741,8 +763,8 @@ const SceneHierarchy: React.FC<SceneHierarchyProps> = ({
                               const file = e.target.files?.[0];
                               if (!file) return;
                               const reader = new FileReader();
-                              reader.onload = (fileEvent) => {
-                                  const url = fileEvent.target?.result as string;
+                              reader.onload = async (fileEvent) => {
+                                  let url = fileEvent.target?.result as string;
                                   let fileType: 'image' | 'audio' | 'video' | '3d-model' = 'image';
                                   if (file.type.startsWith('audio/')) {
                                       fileType = 'audio';
@@ -752,6 +774,17 @@ const SceneHierarchy: React.FC<SceneHierarchyProps> = ({
                                       fileType = '3d-model';
                                   }
                                   if (url) {
+                                      try {
+                                          if (fileType === 'image') {
+                                              url = await compressImageBase64(url);
+                                          } else if (fileType === 'audio') {
+                                              url = await compressAudioBase64(url);
+                                          } else if (fileType === 'video') {
+                                              url = await compressVideoBase64(url);
+                                          }
+                                      } catch (err) {
+                                          console.error('Upload asset compression failed:', err);
+                                      }
                                       onAddAsset({
                                           id: `asset_${Date.now()}`,
                                           name: file.name,
