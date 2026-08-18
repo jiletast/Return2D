@@ -45,6 +45,17 @@ const getObjectAbsolutePosition = (objectId: number, objectsById: Map<number, Ga
     return { x: totalX, y: totalY };
 };
 
+const isObjectUI = (obj: GameObject, objectsById: Map<number, GameObject>): boolean => {
+    let curr: GameObject | undefined = obj;
+    let safety = 100;
+    while (curr && safety-- > 0) {
+        if (curr.isUI) return true;
+        if (!curr.parentId) break;
+        curr = objectsById.get(curr.parentId);
+    }
+    return false;
+};
+
 const getCollisionBox = (objWithAbsPos: GameObject & {x: number, y: number}): {x: number, y: number, width: number, height: number} => {
     const scaleX = Math.abs((objWithAbsPos.scaleX ?? 1) * (objWithAbsPos.animScaleX ?? 1));
     const scaleY = Math.abs((objWithAbsPos.scaleY ?? 1) * (objWithAbsPos.animScaleY ?? 1));
@@ -144,6 +155,24 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
   useEffect(() => {
     setJoystickRuntimeEnabled(joystick?.enabled ?? false);
   }, [joystick?.enabled]);
+
+  useEffect(() => {
+    if (assets && assets.length > 0) {
+      assets.forEach(asset => {
+        if (asset.type === 'image' && asset.url) {
+          if (!imageCache.current.has(asset.url) || !imageCache.current.has(asset.id)) {
+            const img = new Image();
+            img.src = asset.url;
+            img.onload = () => {
+              imageCache.current.set(asset.url, img);
+              imageCache.current.set(asset.id, img);
+              if (asset.name) imageCache.current.set(asset.name, img);
+            };
+          }
+        }
+      });
+    }
+  }, [assets]);
   const draggingRef = useRef<{ id: number; offsetX: number; offsetY: number } | null>(null);
   const floatingFeedbacks = useRef<{
     x: number;
@@ -1297,8 +1326,18 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                     return c.type === cond.trigger;
                 }
             });
+        case 'OnClick':
         case 'OnObjectClicked':
-            return obj ? frameClicks.current.some(c => c.id === obj.id) : frameClicks.current.some(c => c.name === cond.object);
+            if (obj) {
+                return frameClicks.current.some(c => c.id === obj.id || (cond.object && c.name === cond.object));
+            }
+            if (executingObj) {
+                return frameClicks.current.some(c => c.id === executingObj.id || c.name === executingObj.name);
+            }
+            if (cond.object) {
+                return frameClicks.current.some(c => c.name === cond.object);
+            }
+            return frameClicks.current.length > 0;
         case 'OnInteract':
             return obj ? frameInteractions.current.some(c => c.id === obj.id) : frameInteractions.current.some(c => c.name === cond.object);
         case 'IsSceneUnlocked':
@@ -1521,7 +1560,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                 pickedObjects[objName] = validObj1;
                 pickedObjects[targetName!] = validObj2;
 
-            } else if (['OnObjectClicked', 'OnHealthDepleted', 'IsIdle', 'IsRunning', 'IsJumping', 'IsFalling', 'IsOnGround', 'IsMoving', 'CompareObjectVariable', 'CompareStat', 'CompareObjectBooleanVariable', 'OnAttack'].includes(cond.trigger)) {
+            } else if (['OnClick', 'OnObjectClicked', 'OnHealthDepleted', 'IsIdle', 'IsRunning', 'IsJumping', 'IsFalling', 'IsOnGround', 'IsMoving', 'CompareObjectVariable', 'CompareStat', 'CompareObjectBooleanVariable', 'OnAttack'].includes(cond.trigger)) {
                 
                 const objectName = cond.object;
                 const instancesToCheck = pickedObjects[objectName] || objectMap.get(objectName) || [];
@@ -1544,7 +1583,7 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
         }
 
         if (conditionsMet) {
-            const isEventTrigger = event.conditions.some(c => ['OnClick', 'OnKeyPress', 'OnAttack', 'OnTimerElapsed', 'OnDialogueEnd'].includes(c.trigger));
+            const isEventTrigger = event.conditions.some(c => ['OnClick', 'OnObjectClicked', 'OnKeyPress', 'OnAttack', 'OnTimerElapsed', 'OnDialogueEnd'].includes(c.trigger));
             executeActionsSequential(event.actions, undefined, !isEventTrigger, deltaTime, false, pickedObjects, `event-${event.id}`);
         }
       });
@@ -3076,6 +3115,13 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                   const name = getButtonName(idx);
                   frameButtonDown.current.push(name);
                   
+                  if (idx === 0) actionsPressed.current.jump = true;
+                  if (idx === 1 || idx === 2) actionsPressed.current.attack = true;
+                  if (idx === 12) actionsPressed.current.moveUp = true;
+                  if (idx === 13) actionsPressed.current.moveDown = true;
+                  if (idx === 14) { actionsPressed.current.moveLeft = true; actionsPressed.current.moveHorizontalIntensity = -1; }
+                  if (idx === 15) { actionsPressed.current.moveRight = true; actionsPressed.current.moveHorizontalIntensity = 1; }
+
                   // Nintendo Switch Aliases and Standard Mappings
                   if (idx === 6) { frameButtonDown.current.push('ZL'); frameTriggerDown.current.push('L2'); }
                   if (idx === 7) { frameButtonDown.current.push('ZR'); frameTriggerDown.current.push('R2'); }
@@ -3091,10 +3137,10 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
               const x = gp.axes[0], y = gp.axes[1];
               if (Math.abs(x) > 0.3 || Math.abs(y) > 0.3) {
                   frameJoystickEvents.current.push('move');
-                  if (x > 0.3) frameJoystickEvents.current.push('right');
-                  if (x < -0.3) frameJoystickEvents.current.push('left');
-                  if (y > 0.3) frameJoystickEvents.current.push('down');
-                  if (y < -0.3) frameJoystickEvents.current.push('up');
+                  if (x > 0.3) { frameJoystickEvents.current.push('right'); actionsPressed.current.moveRight = true; actionsPressed.current.moveHorizontalIntensity = x; }
+                  if (x < -0.3) { frameJoystickEvents.current.push('left'); actionsPressed.current.moveLeft = true; actionsPressed.current.moveHorizontalIntensity = x; }
+                  if (y > 0.3) { frameJoystickEvents.current.push('down'); actionsPressed.current.moveDown = true; }
+                  if (y < -0.3) { frameJoystickEvents.current.push('up'); actionsPressed.current.moveUp = true; }
               }
           }
       }
@@ -3272,6 +3318,13 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
       }
 
 
+      const isPixelArt = scene?.pixelArt === true || projectData?.pixelArt === true;
+      const isSmoothGraphics = !isPixelArt;
+      ctx.imageSmoothingEnabled = isSmoothGraphics;
+      if (isSmoothGraphics) {
+          ctx.imageSmoothingQuality = 'high';
+      }
+
       ctx.fillStyle = runtimeBackgroundColor;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
@@ -3357,10 +3410,31 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                         // Video might not be ready, ignore error
                     }
                 }
-            } else if (obj.imageUrl) {
-                const img = imageCache.current.get(obj.imageUrl);
-                if (img && img.complete) {
-                    ctx.drawImage(img, drawX, drawY, obj.width, obj.height);
+            } else if (obj.imageUrl || obj.assetId) {
+                let rawUrl = obj.imageUrl || '';
+                if (!rawUrl && obj.assetId) {
+                    const foundAsset = assets?.find(a => a.id === obj.assetId);
+                    if (foundAsset) rawUrl = foundAsset.url;
+                }
+                if (rawUrl && !rawUrl.startsWith('data:') && !rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('/')) {
+                    const foundAsset = assets?.find(a => a.id === rawUrl || a.name === rawUrl);
+                    if (foundAsset) rawUrl = foundAsset.url;
+                }
+
+                if (rawUrl) {
+                    let img = imageCache.current.get(rawUrl) || (obj.imageUrl ? imageCache.current.get(obj.imageUrl) : undefined);
+                    if (!img) {
+                        img = new Image();
+                        img.src = rawUrl;
+                        imageCache.current.set(rawUrl, img);
+                        if (obj.imageUrl) imageCache.current.set(obj.imageUrl, img);
+                    }
+                    if (img && img.complete && img.naturalWidth > 0) {
+                        ctx.drawImage(img, drawX, drawY, obj.width, obj.height);
+                    } else if (obj.color && obj.color !== 'transparent') {
+                        ctx.fillStyle = obj.color;
+                        ctx.fillRect(drawX, drawY, obj.width, obj.height);
+                    }
                 } else if (obj.color && obj.color !== 'transparent') {
                     ctx.fillStyle = obj.color;
                     ctx.fillRect(drawX, drawY, obj.width, obj.height);
@@ -3758,36 +3832,42 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
     const worldMouseX = (mouseX / camera.current.zoom) + camera.current.x - (canvas.width / (2*camera.current.zoom));
     const worldMouseY = (mouseY / camera.current.zoom) + camera.current.y - (canvas.height / (2*camera.current.zoom));
     
-    // Check UI objects first (top-down)
-    const clickedUIObject = [...uiObjects]
+    const clickedObject = [...gameObjectsRef.current]
+        .filter(obj => obj.visible !== false)
         .sort((a,b) => (b.zIndex || 0) - (a.zIndex || 0))
         .find(obj => {
-            const rect = { x: obj.x, y: obj.y, width: obj.width, height: obj.height };
-            return mouseX >= rect.x && mouseX <= rect.x + rect.width &&
-                   mouseY >= rect.y && mouseY <= rect.y + rect.height;
-        });
-
-    const clickedObject = clickedUIObject || [...gameObjectsRef.current]
-        .sort((a,b) => (b.zIndex || 0) - (a.zIndex || 0))
-        .find(obj => {
-            if (obj.isUI) return false;
             const absPos = getObjectAbsolutePosition(obj.id, objectsById);
+            if (isObjectUI(obj, objectsById)) {
+                return mouseX >= absPos.x && mouseX <= absPos.x + (obj.width || 32) &&
+                       mouseY >= absPos.y && mouseY <= absPos.y + (obj.height || 32);
+            }
             const collisionBox = getCollisionBox({...obj, ...absPos});
             return worldMouseX >= collisionBox.x && worldMouseX <= collisionBox.x + collisionBox.width &&
                    worldMouseY >= collisionBox.y && worldMouseY <= collisionBox.y + collisionBox.height;
         });
     
     if (clickedObject) {
-        frameClicks.current.push({ name: clickedObject.name, id: clickedObject.id });
-        clickedObject.scripts?.forEach(script => {
-            if (script.trigger === 'OnClick') {
-                const scriptId = script.id || script.trigger;
-                executeActionsSequential(script.actions, clickedObject, false, 0, false, undefined, `obj-${clickedObject.id}-script-${scriptId}`);
-            }
+        const chain: GameObject[] = [];
+        let curr: GameObject | undefined = clickedObject;
+        let safety = 100;
+        while (curr && safety-- > 0) {
+            chain.push(curr);
+            if (!curr.parentId) break;
+            curr = objectsById.get(curr.parentId);
+        }
+
+        chain.forEach(o => {
+            frameClicks.current.push({ name: o.name, id: o.id });
+            o.scripts?.forEach(script => {
+                if (script.trigger === 'OnClick') {
+                    const scriptId = script.id || script.trigger;
+                    executeActionsSequential(script.actions, o, false, 0, false, undefined, `obj-${o.id}-script-${scriptId}`);
+                }
+            });
         });
 
         if (clickedObject.isDraggable) {
-            const isUI = clickedObject.isUI;
+            const isUI = isObjectUI(clickedObject, objectsById);
             draggingRef.current = {
                 id: clickedObject.id,
                 offsetX: clickedObject.x - (isUI ? mouseX : worldMouseX),
@@ -3946,10 +4026,22 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
       )}
 
       <main className="relative flex-1 w-full flex items-center justify-center bg-black overflow-hidden pointer-events-none">
-        <canvas ref={canvasRef} width={gameWidth} height={gameHeight} className="block pointer-events-auto" style={{ imageRendering: (scene?.fourKRendering || scene?.hdRendering) ? 'auto' : 'pixelated', width: '100%', height: '100%', objectFit: 'contain' }} />
+        <canvas 
+            ref={canvasRef} 
+            width={gameWidth} 
+            height={gameHeight} 
+            className="block pointer-events-auto" 
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            style={{ imageRendering: (scene?.pixelArt || projectData?.pixelArt) ? 'pixelated' : 'auto', width: '100%', height: '100%', objectFit: 'contain' }} 
+        />
         
         {gameObjectsRef.current.filter(o => o.isUI && o.visible !== false).map(obj => {
                 const isControlButton = obj.name.toLowerCase().includes('btn') || obj.name.toLowerCase().includes('boton') || obj.name.toLowerCase().includes('button') || obj.controlAction;
+                const hasClickScript = obj.scripts && obj.scripts.some(s => s.trigger === 'OnClick');
+                const isInteractive = isControlButton || hasClickScript || obj.isDraggable;
                 const scaleX = obj.scaleX ?? 1;
                 const scaleY = obj.scaleY ?? 1;
                 const rotation = obj.rotation ?? 0;
@@ -3972,20 +4064,40 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                     alignItems: 'center',
                     color: obj.textColor || 'white',
                     fontSize: `${obj.fontSize || 16}px`,
-                    pointerEvents: 'auto',
+                    pointerEvents: isInteractive ? 'auto' : 'none',
+                    cursor: isInteractive ? 'pointer' : 'default',
                     transformOrigin: 'top left',
                     transform: `rotate(${rotation}deg) scale(${scaleX}, ${scaleY})`,
                 };
                 
-                const handlePress = (e: React.MouseEvent | React.TouchEvent) => { 
-                    e.preventDefault();
-                    if(obj.controlAction) {
+                const handlePress = (e: React.MouseEvent | React.TouchEvent | React.PointerEvent) => { 
+                    initAudio();
+                    if (obj.controlAction) {
                       actionsPressed.current[obj.controlAction] = true; 
                       actionsPressed.current[obj.controlAction+'_ui'] = true;
                     }
+                    
+                    const objectsById = new Map<number, GameObject>(gameObjectsRef.current.map(o => [o.id, o]));
+                    const chain: GameObject[] = [];
+                    let curr: GameObject | undefined = obj;
+                    let safety = 100;
+                    while (curr && safety-- > 0) {
+                      chain.push(curr);
+                      if (!curr.parentId) break;
+                      curr = objectsById.get(curr.parentId);
+                    }
+
+                    chain.forEach(o => {
+                      frameClicks.current.push({ name: o.name, id: o.id });
+                      o.scripts?.forEach(script => {
+                        if (script.trigger === 'OnClick') {
+                          const scriptId = script.id || script.trigger;
+                          executeActionsSequential(script.actions, o, false, 0, false, undefined, `obj-${o.id}-script-${scriptId}`);
+                        }
+                      });
+                    });
                 };
-                const handleRelease = (e: React.MouseEvent | React.TouchEvent) => { 
-                    e.preventDefault();
+                const handleRelease = (e: React.MouseEvent | React.TouchEvent | React.PointerEvent) => { 
                      if(obj.controlAction) {
                       actionsPressed.current[obj.controlAction] = false; 
                       actionsPressed.current[obj.controlAction+'_ui'] = false;
@@ -3997,13 +4109,10 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                         <button
                             key={obj.id}
                             style={style}
-                            onMouseDown={handlePress}
-                            onMouseUp={handleRelease}
-                            onMouseLeave={handleRelease}
-                            onTouchStart={handlePress}
-                            onTouchEnd={handleRelease}
-                            onTouchCancel={handleRelease}
-                            className="font-bold active:bg-indigo-500/70"
+                            onPointerDown={handlePress}
+                            onPointerUp={handleRelease}
+                            onPointerLeave={handleRelease}
+                            className="font-bold active:bg-indigo-500/70 select-none outline-none"
                         >
                             <span style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}>
                                 {obj.text && renderUITextElements(obj.text, obj)}
@@ -4066,8 +4175,8 @@ const GameView: React.FC<GameViewProps> = ({ scene, allScenes, animations, asset
                 }
 
                 return (
-                    <div key={obj.id} style={style}>
-                        {obj.text && <div className="w-full h-full p-1 font-bold text-white text-center flex items-center justify-center" style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}>{renderUITextElements(obj.text, obj)}</div>}
+                    <div key={obj.id} style={style} onPointerDown={hasClickScript ? handlePress : undefined}>
+                        {obj.text && <div className="w-full h-full p-1 font-bold text-white text-center flex items-center justify-center pointer-events-none" style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}>{renderUITextElements(obj.text, obj)}</div>}
                     </div>
                 );
             })}

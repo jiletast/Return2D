@@ -9,7 +9,8 @@ import {
     Code, 
     ChevronRight,
     FolderOpen,
-    Box
+    Box,
+    Shield
 } from 'lucide-react';
 import { useLanguage } from '../LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -21,11 +22,12 @@ interface StartScreenProps {
   onDeleteProject: (projectId: string) => void;
   onImportProject: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onUpdateProjectIcon: (projectId: string, icon: string) => void;
+  onOpenPrivacyPolicy?: () => void;
 }
 
 const GAME_ICONS = ['🎮', '👾', '🚀', '🧱', '🤠', '⚔️', '⚽', '🪄', '🏰', '💎', '🍎', '🦖', '👻', '👽', '👑', '🌟', '🐱', '🦊', '🦄', '🍕', '🚗', '✈️', '🏝️', '🌋', '🎯', '🎸', '🎨', '🧩', '🔑', '❤️'];
 
-const StartScreen: React.FC<StartScreenProps> = ({ projects, onLoadProject, onCreateProject, onDeleteProject, onImportProject, onUpdateProjectIcon }) => {
+const StartScreen: React.FC<StartScreenProps> = ({ projects, onLoadProject, onCreateProject, onDeleteProject, onImportProject, onUpdateProjectIcon, onOpenPrivacyPolicy }) => {
   const { t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [projectToConfirmDelete, setProjectToConfirmDelete] = useState<Project | null>(null);
@@ -73,15 +75,6 @@ const StartScreen: React.FC<StartScreenProps> = ({ projects, onLoadProject, onCr
                 </button>
             </div>
 
-            <div className="flex flex-col gap-2 pt-4">
-                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1 mb-2">Herramientas</span>
-                 <button className="w-full flex items-center gap-4 px-6 py-2 text-gray-500 hover:text-indigo-400 transition-colors text-xs font-bold uppercase tracking-widest">
-                    <Code size={16} /> Recursos PRO
-                 </button>
-                 <button className="w-full flex items-center gap-4 px-6 py-2 text-gray-500 hover:text-indigo-400 transition-colors text-xs font-bold uppercase tracking-widest">
-                    <Settings size={16} /> Ajustes Motor
-                 </button>
-            </div>
 
             <input type="file" ref={fileInputRef} onChange={onImportProject} accept=".json" className="hidden" />
           </div>

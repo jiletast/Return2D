@@ -62,7 +62,7 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, onCr
 
     const timeoutId = setTimeout(() => {
         setPreviewFrame(nextFrameIndex);
-    }, currentFrameData.duration);
+    }, Math.max(20, currentFrameData.duration || 100));
     
     return () => clearTimeout(timeoutId);
 
@@ -72,10 +72,12 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, onCr
       if (!selectedAnimId && animations.length > 0) {
           setSelectedAnimId(animations[0].id);
       }
-      if (selectedAnimation) {
-          setPreviewFrame(0);
-      }
-  }, [animations, selectedAnimId, selectedAnimation]);
+  }, [animations, selectedAnimId]);
+
+  const handleSelectAnimation = (animId: string) => {
+    setSelectedAnimId(animId);
+    setPreviewFrame(0);
+  };
 
   const handleCreateAnimation = () => {
     const newName = t('animation.newName', { index: animations.length + 1 });
@@ -119,7 +121,9 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, onCr
       if (!selectedAnimation) return;
       const newFrames = selectedAnimation.frames.filter((_, i) => i !== frameIndex);
       updateSelectedAnimation({ frames: newFrames });
-  }
+      setPreviewFrame(prev => Math.max(0, Math.min(prev, newFrames.length - 1)));
+      setIsPlaying(false);
+  };
 
   const duplicateFrame = (frameIndex: number) => {
     if (!selectedAnimation) return;
@@ -127,6 +131,8 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, onCr
     const newFrames = [...selectedAnimation.frames];
     newFrames.splice(frameIndex + 1, 0, frameToClone);
     updateSelectedAnimation({ frames: newFrames });
+    setPreviewFrame(frameIndex + 1);
+    setIsPlaying(false);
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -135,11 +141,16 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, onCr
 
   const handleDrop = (e: React.DragEvent, dropIndex: number) => {
     if (!selectedAnimation) return;
-    const dragIndex = parseInt(e.dataTransfer.getData("frameIndex"), 10);
+    const dragIndexStr = e.dataTransfer.getData("frameIndex");
+    if (!dragIndexStr) return;
+    const dragIndex = parseInt(dragIndexStr, 10);
+    if (isNaN(dragIndex) || dragIndex === dropIndex) return;
     const newFrames = [...selectedAnimation.frames];
     const [draggedFrame] = newFrames.splice(dragIndex, 1);
     newFrames.splice(dropIndex, 0, draggedFrame);
     updateSelectedAnimation({ frames: newFrames });
+    setPreviewFrame(dropIndex);
+    setIsPlaying(false);
   };
 
   const handleSave = () => {
@@ -185,7 +196,7 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, onCr
                 <h3 className="text-lg font-semibold p-2 border-b border-gray-800">{t('header.animations')}</h3>
                 <ul className="flex-grow overflow-y-auto py-2">
                     {animations.map(anim => (
-                        <li key={anim.id} onClick={() => setSelectedAnimId(anim.id)} className={`p-2 rounded-md cursor-pointer ${selectedAnimId === anim.id ? 'bg-indigo-600' : 'hover:bg-gray-800'}`}>{anim.name}</li>
+                        <li key={anim.id} onClick={() => handleSelectAnimation(anim.id)} className={`p-2 rounded-md cursor-pointer ${selectedAnimId === anim.id ? 'bg-indigo-600' : 'hover:bg-gray-800'}`}>{anim.name}</li>
                     ))}
                 </ul>
                 <button onClick={handleCreateAnimation} className="w-full text-sm p-2 bg-gray-800 hover:bg-indigo-600 rounded-md mt-2">{t('animation.newAnimation')}</button>
@@ -328,7 +339,7 @@ const AnimationEditor: React.FC<AnimationEditorProps> = ({ onClose, onSave, onCr
                         }}
                     >
                         <img src={asset?.url} className="w-16 h-16 object-cover rounded-md pointer-events-none" />
-                        <input type="number" value={frame.duration} onChange={e => updateFrame(index, { duration: parseInt(e.target.value, 10) || 0 })} className="w-20 bg-gray-800 text-center rounded text-xs p-0.5" />
+                        <input type="number" value={frame.duration} onClick={e => e.stopPropagation()} onChange={e => updateFrame(index, { duration: parseInt(e.target.value, 10) || 0 })} className="w-20 bg-gray-800 text-center rounded text-xs p-0.5" />
                         <span className="text-xs">ms</span>
                         <button onClick={() => removeFrame(index)} title={t('common.delete')} className="absolute -top-1 -right-1 bg-red-600 rounded-full h-4 w-4 text-xs z-10">&times;</button>
                         <button onClick={() => duplicateFrame(index)} title={t('hierarchy.clone')} className="absolute -top-1 -left-1 bg-blue-600 rounded-full p-0.5 text-xs z-10"><CloneIcon /></button>

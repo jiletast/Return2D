@@ -47,6 +47,7 @@ export interface GameObject {
   color: string; // Now a hex color string, e.g., "#FF5733"
   zIndex: number;
   imageUrl?: string; // Optional image URL for the object's appearance
+  assetId?: string; // Optional asset ID referencing GameAsset
   videoUrl?: string;
   videoLoop?: boolean;
   videoAutoplay?: boolean;
@@ -205,7 +206,7 @@ export interface Animation {
 
 export interface Condition {
   object: string;
-  trigger: 'OnStart' | 'OnCollisionWith' | 'OnKeyPress' | 'OnAnyKeyPress' | 'CompareVariable' | 'CompareBooleanVariable' | 'CompareObjectBooleanVariable' | 'OnObjectClicked' | 'IsIdle' | 'IsRunning' | 'IsJumping' | 'IsFalling' | 'OnAttack' | 'OnVerticalCollision' | 'OnHorizontalCollision' | 'IsOnGround' | 'IsMoving' | 'OnMatchFound' | 'OnPlayerJoined' | 'OnPlayerLeft' | 'OnReceiveNetworkMessage' | 'IsMusicPlaying' | 'CompareStat' | 'CompareObjectVariable' | 'OnJoystickMove' | 'OnJoystickUp' | 'OnJoystickDown' | 'OnJoystickLeft' | 'OnJoystickRight' | 'OnButtonDown' | 'OnButtonUp' | 'OnTriggerDown' | 'OnTriggerUp' | 'OnConsoleCommand' | 'OnTimerElapsed' | 'EveryXSeconds' | 'Always' | 'OnDialogueEnd' | 'OnHealthDepleted' | 'IsMobile' | 'IsPC' | 'IsClimbing' | 'IsLookingLeft' | 'IsLookingRight' | 'OnInteract' | 'IsSceneUnlocked';
+  trigger: 'OnStart' | 'OnClick' | 'OnCollisionWith' | 'OnKeyPress' | 'OnAnyKeyPress' | 'CompareVariable' | 'CompareBooleanVariable' | 'CompareObjectBooleanVariable' | 'OnObjectClicked' | 'IsIdle' | 'IsRunning' | 'IsJumping' | 'IsFalling' | 'OnAttack' | 'OnVerticalCollision' | 'OnHorizontalCollision' | 'IsOnGround' | 'IsMoving' | 'OnMatchFound' | 'OnPlayerJoined' | 'OnPlayerLeft' | 'OnReceiveNetworkMessage' | 'IsMusicPlaying' | 'CompareStat' | 'CompareObjectVariable' | 'OnJoystickMove' | 'OnJoystickUp' | 'OnJoystickDown' | 'OnJoystickLeft' | 'OnJoystickRight' | 'OnButtonDown' | 'OnButtonUp' | 'OnTriggerDown' | 'OnTriggerUp' | 'OnConsoleCommand' | 'OnTimerElapsed' | 'EveryXSeconds' | 'Always' | 'OnDialogueEnd' | 'OnHealthDepleted' | 'IsMobile' | 'IsPC' | 'IsClimbing' | 'IsLookingLeft' | 'IsLookingRight' | 'OnInteract' | 'IsSceneUnlocked';
   target?: string;
   params?: Record<string, any>;
 }
@@ -247,6 +248,7 @@ export interface Scene {
   maxPlayers?: number;
   fourKRendering?: boolean;
   hdRendering?: boolean;
+  pixelArt?: boolean;
 }
 
 export interface ProjectData {
@@ -272,6 +274,8 @@ export interface ProjectData {
   fps?: number;
   hdRendering?: boolean;
   fourKRendering?: boolean;
+  smoothGraphics?: boolean;
+  pixelArt?: boolean;
 }
 
 export interface Project {

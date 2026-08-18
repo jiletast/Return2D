@@ -4,7 +4,6 @@ import type { GameEvent, Condition, Action, Scene, Animation, Variable, GameAsse
 import { TrashIcon } from './icons/TrashIcon';
 import { EditIcon } from './icons/EditIcon';
 import { useLanguage } from '../LanguageContext';
-import { ScratchBlocksEditor } from './ScratchBlocksEditor';
 
 interface EventEditorProps {
   onClose: () => void;
@@ -244,7 +243,6 @@ const SelectorModal: React.FC<{
 
 const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDeleteEvent, onUpdateEvent, scene, animations, assets, globalObjects, globalVariables, allScenes }) => {
   const { t } = useLanguage();
-  const [programmingMode, setProgrammingMode] = useState<'events' | 'blocks'>('blocks');
   const [activeTab, setActiveTab] = useState<'2D' | '3D'>('2D');
   const [eventDimension, setEventDimension] = useState<'2D' | '3D'>('2D');
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -264,7 +262,7 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
   const globalVariableNames = useMemo(() => globalVariables.map(v => v.name), [globalVariables]);
   const sceneNames = useMemo(() => allScenes.map(s => s.name), [allScenes]);
   const standardEvents = useMemo(() => {
-    return (scene?.events || []).filter(e => !e.programmingMode || e.programmingMode === 'events');
+    return scene?.events || [];
   }, [scene?.events]);
 
   const handleEditEvent = (event: GameEvent) => {
@@ -657,56 +655,11 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
         <header className="flex items-center justify-between p-4 border-b border-gray-800 shrink-0">
           <div className="flex items-center gap-4 sm:gap-6">
             <h2 className="text-lg sm:text-xl font-bold">{t('event.editorTitle')}</h2>
-            <div className="bg-black/40 border border-white/10 rounded-lg p-0.5 flex">
-              <button
-                onClick={() => {
-                  setIsFormOpen(false);
-                  setProgrammingMode('events');
-                }}
-                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
-                  programmingMode === 'events'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-white/60 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                Lista de Eventos
-              </button>
-              <button
-                onClick={() => {
-                  setIsFormOpen(false);
-                  setProgrammingMode('blocks');
-                }}
-                className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
-                  programmingMode === 'blocks'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-white/60 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-ping"></span>
-                Bloques Visuales (Scratch)
-              </button>
-            </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
         </header>
         
-        {programmingMode === 'blocks' ? (
-          <div className="flex-grow min-h-0 overflow-hidden">
-            <ScratchBlocksEditor
-              scene={scene}
-              animations={animations}
-              assets={assets}
-              globalObjects={globalObjects}
-              globalVariables={globalVariables}
-              allScenes={allScenes}
-              onAddEvent={onAddEvent}
-              onDeleteEvent={onDeleteEvent}
-              onUpdateEvent={onUpdateEvent}
-            />
-          </div>
-        ) : (
-          <>
-            <main className="flex-grow p-4 overflow-y-auto space-y-4">
+        <main className="flex-grow p-4 overflow-y-auto space-y-4">
                 {/* Simplified for 2D only */}
                 {!isFormOpen && standardEvents.map((event, index) => (
                 <div key={event.id || index} className="bg-black/50 p-3 rounded-lg border border-gray-800 relative group">
@@ -811,8 +764,6 @@ const EventEditor: React.FC<EventEditorProps> = ({ onClose, onAddEvent, onDelete
                     </button>
                )}
             </footer>
-          </>
-        )}
       </div>
     </div>
   );

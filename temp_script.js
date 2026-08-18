@@ -1,12 +1,6 @@
-import JSZip from 'jszip';
-import type { ProjectData } from '../types';
 
-export const generateGameHTML = (projectData?: ProjectData | null): string => {
-    if (!projectData) return '';
-
-    // This script is a self-contained game engine, adapted from GameView.tsx
-    // to provide full feature parity with the in-editor preview.
-    const gameEngineScript = `
+        window.MULTIPLAYER_SERVER = "http://localhost:3000";
+        
         const canvas = document.getElementById('gameCanvas');
         if (!canvas) throw new Error("Canvas not found");
         const ctx = canvas.getContext('2d');
@@ -91,7 +85,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         const parseCharacterImageMapping = (mappingStr) => {
             const map = {};
             if (!mappingStr) return map;
-            const lines = mappingStr.split(/[\\n,]/);
+            const lines = mappingStr.split(/[\n,]/);
             lines.forEach(line => {
                 const parts = line.split('=');
                 if (parts.length >= 2) {
@@ -459,7 +453,6 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     }
                     break;
                 case 'GoToScene':
-                case 'ChangeScene':
                     if (params?.sceneName) loadSceneByName(params.sceneName);
                     break;
                 case 'SetSceneUnlocked':
@@ -1477,7 +1470,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
 
                 if (conditionsMet) {
                     const isEventTrigger = event.conditions.some(c => ['OnClick', 'OnObjectClicked', 'OnKeyPress', 'OnAttack', 'OnTimerElapsed', 'OnDialogueEnd'].includes(c.trigger));
-                    executeActionsSequential(event.actions, null, !isEventTrigger, deltaTime, false, pickedObjects, \`event-\${event.id}\`);
+                    executeActionsSequential(event.actions, null, !isEventTrigger, deltaTime, false, pickedObjects, `event-${event.id}`);
                 }
              });
         };
@@ -1588,7 +1581,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 currentScene.events.forEach((event, eventIndex) => {
                     event.conditions.forEach((cond, condIndex) => {
                         if (cond.trigger === 'EveryXSeconds' && cond.params?.interval) {
-                            const key = \`evt-\${event.id || eventIndex}-cond-\${condIndex}\`;
+                            const key = `evt-${event.id || eventIndex}-cond-${condIndex}`;
                             const intervalData = intervals.get(key);
                             const intervalMs = Number(cond.params.interval) * 1000;
                             if (!intervalData) {
@@ -1596,7 +1589,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                             } else if (now >= intervalData.lastTriggerTime + intervalData.interval) {
                                 const otherConditionsMet = event.conditions.filter(c => c !== cond).every(c => checkCondition(c, null, null));
                                 if (otherConditionsMet) {
-                                    executeActionsSequential(event.actions, null, false, 0, false, undefined, \`event-\${event.id}\`);
+                                    executeActionsSequential(event.actions, null, false, 0, false, undefined, `event-${event.id}`);
                                 }
                                 intervalData.lastTriggerTime = now;
                             }
@@ -1623,7 +1616,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 const tilemapBehavior = obj.behaviors?.find(b => b.name === 'Tilemap');
                 if (tilemapBehavior) {
                     const { tileSize = 32, collisionData = '' } = tilemapBehavior.properties || {};
-                    const rows = String(collisionData).split('\\n');
+                    const rows = String(collisionData).split('\n');
                     rows.forEach((row, y) => {
                         for (let x = 0; x < row.length; x++) {
                             if (row[x] !== ' ' && row[x] !== '0') {
@@ -1791,7 +1784,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 obj.scripts?.forEach(s => {
                     const sId = s.id || s.trigger;
                     if (s.trigger === 'OnUpdate' || s.trigger === 'Always') {
-                        executeActionsSequential(s.actions, obj, false, 0, false, undefined, \`obj-\${obj.id}-script-\${sId}\`);
+                        executeActionsSequential(s.actions, obj, false, 0, false, undefined, `obj-${obj.id}-script-${sId}`);
                     } else if (!['OnStart', 'OnClick', 'OnCollisionWith', 'OnTimerElapsed'].includes(s.trigger)) {
                         const mockCondition = {
                             trigger: s.trigger,
@@ -1800,7 +1793,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                             target: s.params?.targetObjectName
                         };
                         if (checkCondition(mockCondition, obj)) {
-                            executeActionsSequential(s.actions, obj, false, 0, false, undefined, \`obj-\${obj.id}-script-\${sId}\`);
+                            executeActionsSequential(s.actions, obj, false, 0, false, undefined, `obj-${obj.id}-script-${sId}`);
                         }
                     }
                 });
@@ -2582,13 +2575,13 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     o1?.scripts?.forEach(s => {
                         const sId = s.id || s.trigger;
                         if (s.trigger === 'OnCollisionWith' && (!s.params?.targetObjectName || s.params.targetObjectName === o2?.name)) {
-                            executeActionsSequential(s.actions, o1, false, deltaTime, false, targetsDict, \`obj-\${o1.id}-script-\${sId}\`);
+                            executeActionsSequential(s.actions, o1, false, deltaTime, false, targetsDict, `obj-${o1.id}-script-${sId}`);
                         }
                     });
                     o2?.scripts?.forEach(s => {
                         const sId = s.id || s.trigger;
                         if (s.trigger === 'OnCollisionWith' && (!s.params?.targetObjectName || s.params.targetObjectName === o1?.name)) {
-                            executeActionsSequential(s.actions, o2, false, deltaTime, false, targetsDict, \`obj-\${o2.id}-script-\${sId}\`);
+                            executeActionsSequential(s.actions, o2, false, deltaTime, false, targetsDict, `obj-${o2.id}-script-${sId}`);
                         }
                     });
                 }
@@ -2598,11 +2591,11 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 obj.scripts?.forEach(script => {
                     const scriptId = script.id || script.trigger;
                     if (script.trigger === 'OnUpdate' || script.trigger === 'Always') {
-                        executeActionsSequential(script.actions, obj, true, deltaTime, false, undefined, \`obj-\${obj.id}-script-\${scriptId}\`);
+                        executeActionsSequential(script.actions, obj, true, deltaTime, false, undefined, `obj-${obj.id}-script-${scriptId}`);
                     } else if (!['OnStart', 'OnClick', 'OnCollisionWith', 'OnTimerElapsed', 'OnDialogueEnd'].includes(script.trigger)) {
                         const mockCond = { trigger: script.trigger, object: obj.name, params: script.params, target: script.params?.targetObjectName };
                         if (checkCondition(mockCond, obj)) {
-                            executeActionsSequential(script.actions, obj, true, deltaTime, false, undefined, \`obj-\${obj.id}-script-\${scriptId}\`);
+                            executeActionsSequential(script.actions, obj, true, deltaTime, false, undefined, `obj-${obj.id}-script-${scriptId}`);
                         }
                     }
                 });
@@ -2979,7 +2972,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 const img = imageCache.get(obj.imageUrl);
                 if (img && img.complete) {
                     const { tileSize = 32, collisionData = '' } = tilemapBehavior.properties || {};
-                    const rows = String(collisionData).split('\\n');
+                    const rows = String(collisionData).split('\n');
                     rows.forEach((row, y) => {
                         for (let x = 0; x < row.length; x++) {
                             if (row[x] !== ' ' && row[x] !== '0') {
@@ -3077,34 +3070,10 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     video.muted = obj.videoMuted !== false;
                     try { context.drawImage(video, drawX, drawY, obj.width, obj.height); } catch (e) {}
                 }
-            } else if (obj.imageUrl || obj.assetId) {
-                let rawUrl = obj.imageUrl || '';
-                if (!rawUrl && obj.assetId) {
-                    const foundAsset = (assets || []).find(a => a.id === obj.assetId);
-                    if (foundAsset) rawUrl = foundAsset.url;
-                }
-                if (rawUrl && !rawUrl.startsWith('data:') && !rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('/')) {
-                    const foundAsset = (assets || []).find(a => a.id === rawUrl || a.name === rawUrl);
-                    if (foundAsset) rawUrl = foundAsset.url;
-                }
-
-                if (rawUrl) {
-                    let img = imageCache.get(rawUrl) || (obj.imageUrl ? imageCache.get(obj.imageUrl) : undefined);
-                    if (!img) {
-                        img = new Image();
-                        img.src = rawUrl;
-                        imageCache.set(rawUrl, img);
-                        if (obj.imageUrl) imageCache.set(obj.imageUrl, img);
-                    }
-                    if (img && img.complete && img.naturalWidth > 0) {
-                        context.drawImage(img, drawX, drawY, obj.width, obj.height);
-                    } else if (obj.color && obj.color !== 'transparent') {
-                        context.fillStyle = obj.color;
-                        context.fillRect(drawX, drawY, obj.width, obj.height);
-                    }
-                } else if (obj.color && obj.color !== 'transparent') {
-                    context.fillStyle = obj.color;
-                    context.fillRect(drawX, drawY, obj.width, obj.height);
+            } else if (obj.imageUrl) {
+                const img = imageCache.get(obj.imageUrl);
+                if (img?.complete) {
+                    context.drawImage(img, drawX, drawY, obj.width, obj.height);
                 }
             } else if (obj.color !== 'transparent') {
                 context.fillStyle = obj.color;
@@ -3136,10 +3105,10 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 context.textAlign = 'center';
                 context.textBaseline = 'middle';
                 let newText = obj.text;
-                for (const key in gameVariables) newText = newText.replace(new RegExp('\\\\{' + key + '\\\\}', 'g'), String(gameVariables[key]));
+                for (const key in gameVariables) newText = newText.replace(new RegExp('\\{' + key + '\\}', 'g'), String(gameVariables[key]));
                 if (obj.variables) {
                     obj.variables.forEach(v => {
-                        newText = newText.replace(new RegExp('\\\\{' + v.name + '\\\\}', 'g'), String(v.value));
+                        newText = newText.replace(new RegExp('\\{' + v.name + '\\}', 'g'), String(v.value));
                     });
                 }
                 context.fillText(newText, 0, 0);
@@ -3156,14 +3125,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 if (!animationFrameId) animationFrameId = requestAnimationFrame(gameLoop);
                 return;
             }
-            if (backgroundMusicPlayer) {
-                try {
-                    backgroundMusicPlayer.pause();
-                    backgroundMusicPlayer.currentTime = 0;
-                } catch(e) {}
-                backgroundMusicPlayer = null;
-                currentBackgroundMusicId = null;
-            }
+            if (backgroundMusicPlayer) backgroundMusicPlayer.pause();
 
             lastTime = 0;
             currentScene = sceneToLoad;
@@ -3220,57 +3182,31 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     if (gameVariables[v.name] === undefined) gameVariables[v.name] = v.value;
                 });
 
-            }
-
-            if (currentScene?.backgroundMusicId) {
-                const musicAsset = (assets || []).find(a => a.id === currentScene.backgroundMusicId || a.url === currentScene.backgroundMusicId);
-                const audioUrl = musicAsset ? musicAsset.url : currentScene.backgroundMusicId;
-                if (audioUrl) {
-                    let cachedAudio = audioCache.get(audioUrl) || (musicAsset ? audioCache.get(musicAsset.id) : null);
-                    try {
-                        const player = cachedAudio ? cachedAudio.cloneNode() : new Audio(audioUrl);
-                        player.loop = true;
-                        player.volume = 1;
-                        backgroundMusicPlayer = player;
-                        currentBackgroundMusicId = musicAsset ? musicAsset.id : currentScene.backgroundMusicId;
-                        const playPromise = player.play();
-                        if (playPromise && typeof playPromise.catch === 'function') {
-                            playPromise.catch(() => {
-                                const playOnGesture = () => {
-                                    if (backgroundMusicPlayer) {
-                                        backgroundMusicPlayer.play().catch(()=>{});
-                                    }
-                                    window.removeEventListener('pointerdown', playOnGesture);
-                                    window.removeEventListener('click', playOnGesture);
-                                    window.removeEventListener('keydown', playOnGesture);
-                                    window.removeEventListener('touchstart', playOnGesture);
-                                };
-                                window.addEventListener('pointerdown', playOnGesture, { once: true });
-                                window.addEventListener('click', playOnGesture, { once: true });
-                                window.addEventListener('keydown', playOnGesture, { once: true });
-                                window.addEventListener('touchstart', playOnGesture, { once: true });
-                            });
+                if(currentScene?.backgroundMusicId) {
+                    const musicAsset = assets.find(a => a.id === currentScene.backgroundMusicId);
+                    if(musicAsset) {
+                        const cachedAudio = audioCache.get(musicAsset.url);
+                        if (cachedAudio) {
+                            backgroundMusicPlayer = cachedAudio.cloneNode();
+                            backgroundMusicPlayer.loop = true;
+                            backgroundMusicPlayer.play().catch(()=>{});
+                            currentBackgroundMusicId = musicAsset.id;
                         }
-                    } catch(err) {
-                        console.error('Error playing scene background music:', err);
                     }
                 }
-            }
-
-            if (!savedState) {
                 (currentScene?.events || []).forEach(e => {
                     const hasOnStart = e.conditions.some(c => c.trigger === 'OnStart');
                     if (hasOnStart) {
                         const otherConditionsMet = e.conditions.filter(c => c.trigger !== 'OnStart').every(c => checkCondition(c, null, null));
                         if (otherConditionsMet) {
-                            executeActionsSequential(e.actions, null, false, 0, false, undefined, \`event-\${e.id}\`);
+                            executeActionsSequential(e.actions, null, false, 0, false, undefined, `event-${e.id}`);
                         }
                     }
                 });
                 gameObjects.forEach(o => o.scripts?.forEach(s => {
                     if (s.trigger === 'OnStart') {
                         const sId = s.id || s.trigger;
-                        executeActionsSequential(s.actions, o, false, 0, false, undefined, \`obj-\${o.id}-script-\${sId}\`);
+                        executeActionsSequential(s.actions, o, false, 0, false, undefined, `obj-${o.id}-script-${sId}`);
                     }
                 }));
             }
@@ -3303,9 +3239,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 if (asset.type === 'image') {
                     const img = new Image();
                     img.onload = () => { 
-                        imageCache.set(asset.url, img);
-                        imageCache.set(asset.id, img);
-                        if (asset.name) imageCache.set(asset.name, img);
+                        imageCache.set(asset.url, img); 
                         clearTimeout(timeoutId);
                         resolve(); 
                     };
@@ -3504,7 +3438,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     o.scripts?.forEach(s => {
                         if (s.trigger === 'OnClick') {
                             const sId = s.id || s.trigger;
-                            executeActionsSequential(s.actions, o, true, 0, false, undefined, \`obj-\${o.id}-script-\${sId}\`);
+                            executeActionsSequential(s.actions, o, true, 0, false, undefined, `obj-${o.id}-script-${sId}`);
                         }
                     });
                 });
@@ -3730,7 +3664,7 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                     if (joystickState.active) {
                         const x = joystickState.distance * Math.cos(joystickState.angle * Math.PI / 180);
                         const y = joystickState.distance * Math.sin(joystickState.angle * Math.PI / 180);
-                        joystickHandle.style.transform = \`translate(\${x}px, \${y}px)\`;
+                        joystickHandle.style.transform = `translate(${x}px, ${y}px)`;
                     } else {
                         joystickHandle.style.transform = 'translate(0, 0)';
                     }
@@ -3835,11 +3769,11 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
                 } else if (obj.text) {
                     let textVal = obj.text;
                     for (const key in gameVariables) {
-                        textVal = textVal.replace(new RegExp('\\\\{' + key + '\\\\}', 'g'), String(gameVariables[key]));
+                        textVal = textVal.replace(new RegExp('\\{' + key + '\\}', 'g'), String(gameVariables[key]));
                     }
                     if (obj.variables) {
                         obj.variables.forEach(v => {
-                            textVal = textVal.replace(new RegExp('\\\\{' + v.name + '\\\\}', 'g'), String(v.value));
+                            textVal = textVal.replace(new RegExp('\\{' + v.name + '\\}', 'g'), String(v.value));
                         });
                     }
                     
@@ -3904,31 +3838,43 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         const initGameBoot = () => {
             window.dispatchEvent(new Event('resize'));
 
-            if (window.projectData) {
-                startGame(window.projectData).catch(err => {
-                    console.error('Error in startGame:', err);
-                    if (!animationFrameId) animationFrameId = requestAnimationFrame(gameLoop);
-                });
-            } else {
-                if (!animationFrameId) animationFrameId = requestAnimationFrame(gameLoop);
-            }
+            const overlay = document.createElement('div');
+            overlay.id = 'start-overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0'; overlay.style.left = '0'; overlay.style.width = '100%'; overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(0,0,0,0.85)';
+            overlay.style.display = 'flex'; overlay.style.flexDirection = 'column';
+            overlay.style.justifyContent = 'center'; overlay.style.alignItems = 'center';
+            overlay.style.zIndex = '1000000';
+            overlay.style.cursor = 'pointer';
+            overlay.innerHTML = '<h1 style="color:white; margin-bottom: 20px;">Return 2D Game</h1><button style="padding: 15px 30px; font-size: 20px; background: #6366f1; color: white; border: none; border-radius: 8px; cursor: pointer;">JUGAR</button>';
+            document.body.appendChild(overlay);
 
-            const unlockAudio = () => {
+            let hasStarted = false;
+            const handleStart = () => {
+                if (hasStarted) return;
+                hasStarted = true;
+                interactionRequired = false;
+                overlay.remove();
                 if (!window.audioContext) {
                     try { window.audioContext = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
                 }
-                if (window.audioContext?.state === 'suspended') {
-                    window.audioContext.resume().catch(() => {});
+                if (window.audioContext?.state === 'suspended') window.audioContext.resume();
+                
+                if (window.projectData) {
+                    startGame(window.projectData).catch(err => {
+                        console.error('Error in startGame:', err);
+                        if (!animationFrameId) animationFrameId = requestAnimationFrame(gameLoop);
+                    });
+                } else {
+                    if (!animationFrameId) animationFrameId = requestAnimationFrame(gameLoop);
                 }
-                window.removeEventListener('click', unlockAudio);
-                window.removeEventListener('keydown', unlockAudio);
-                window.removeEventListener('touchstart', unlockAudio);
-            };
-            window.addEventListener('click', unlockAudio);
-            window.addEventListener('keydown', unlockAudio);
-            window.addEventListener('touchstart', unlockAudio);
 
-            window.dispatchEvent(new Event('resize'));
+                window.dispatchEvent(new Event('resize'));
+            };
+
+            overlay.addEventListener('click', handleStart);
+            overlay.addEventListener('pointerdown', handleStart);
         };
 
         if (document.readyState === 'loading') {
@@ -3936,450 +3882,5 @@ export const generateGameHTML = (projectData?: ProjectData | null): string => {
         } else {
             initGameBoot();
         }
-    `;
-
-    const imageRenderingStyle = projectData?.pixelArt === true ? 'pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges' : 'auto';
-
-    const minifyJS = (js: string) => {
-        return js;
-    };
-
-    const minifiedEngine = minifyJS(gameEngineScript);
-
-    return `<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Juego Return 2D</title>
-        <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #000; display: flex; justify-content: center; align-items: center; font-family: sans-serif; color: white; }
-        #game-container { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-        canvas { display: block; image-rendering: ${imageRenderingStyle}; max-width: 100%; max-height: 100%; }
-        #ui-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
-        #ui-container button { pointer-events: auto; }
-    </style>
-</head>
-<body>
-    <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
-        <div id="ui-container"></div>
-    </div>
-    <script>
-        window.projectData = ${JSON.stringify(projectData || null).replace(/<\/script>/g, '<\\/script>')};
-        window.MULTIPLAYER_SERVER = "${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}";
-        ${minifiedEngine}
-    </script>
-</body>
-</html>`;
-};
-
-// Compression utilities to reduce exported HTML file size from MB to KB
-export async function compressImageBase64(base64: string): Promise<string> {
-    if (typeof window === 'undefined' || typeof document === 'undefined') {
-        return base64;
-    }
     
-    if (base64.length < 10000 || base64.includes('image/svg+xml')) {
-        return base64;
-    }
-
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-            try {
-                const maxDim = 1024;
-                let width = img.width;
-                let height = img.height;
-                
-                if (!width || !height) {
-                    resolve(base64);
-                    return;
-                }
-
-                if (width <= 128 && height <= 128) {
-                    resolve(base64);
-                    return;
-                }
-
-                if (width > maxDim || height > maxDim) {
-                    if (width > height) {
-                        height = Math.round((height * maxDim) / width);
-                        width = maxDim;
-                    } else {
-                        width = Math.round((width * maxDim) / height);
-                        height = maxDim;
-                    }
-                }
-
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
-                    resolve(base64);
-                    return;
-                }
-
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
-                ctx.drawImage(img, 0, 0, width, height);
-
-                const isTransparent = base64.includes('image/png') || base64.includes('image/gif') || base64.includes('image/svg');
-                let compressed = '';
-
-                if (isTransparent) {
-                    compressed = canvas.toDataURL('image/png');
-                } else {
-                    compressed = canvas.toDataURL('image/webp', 0.80);
-                    if (!compressed.startsWith('data:image/webp')) {
-                        compressed = canvas.toDataURL('image/jpeg', 0.80);
-                    }
-                }
-                
-                if (compressed && compressed.length < base64.length) {
-                    resolve(compressed);
-                } else {
-                    resolve(base64);
-                }
-            } catch (e) {
-                console.error('Image compression failed:', e);
-                resolve(base64);
-            }
-        };
-        img.onerror = () => {
-            resolve(base64);
-        };
-        img.src = base64;
-    });
-}
-
-function writeString(view: DataView, offset: number, string: string) {
-    for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-    }
-}
-
-function encodeWAV(audioBuffer: AudioBuffer): ArrayBuffer {
-    const sampleRate = audioBuffer.sampleRate;
-    const numChannels = audioBuffer.numberOfChannels;
-    const channelData = audioBuffer.getChannelData(0);
-    const numSamples = channelData.length;
     
-    const buffer = new ArrayBuffer(44 + numSamples * 2);
-    const view = new DataView(buffer);
-    
-    writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + numSamples * 2, true);
-    writeString(view, 8, 'WAVE');
-    writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * numChannels * 2, true);
-    view.setUint16(32, numChannels * 2, true);
-    view.setUint16(34, 16, true);
-    writeString(view, 36, 'data');
-    view.setUint32(40, numSamples * 2, true);
-    
-    let offset = 44;
-    for (let i = 0; i < numSamples; i++, offset += 2) {
-        const s = Math.max(-1, Math.min(1, channelData[i]));
-        const val = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        view.setInt16(offset, val, true);
-    }
-    
-    return buffer;
-}
-
-export async function compressAudioBase64(base64: string): Promise<string> {
-    if (typeof window === 'undefined' || (!window.AudioContext && !(window as any).webkitAudioContext)) {
-        return base64;
-    }
-
-    if (base64.length < 15000) {
-        return base64;
-    }
-
-    try {
-        const parts = base64.split(',');
-        if (parts.length < 2) return base64;
-        const binaryStr = atob(parts[1]);
-        const len = binaryStr.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-        }
-
-        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-        const ctx = new AudioCtxClass();
-        const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
-        ctx.close();
-
-        // Resample to mono 12000Hz (super light weight for 2D game sounds/soundtracks)
-        const targetSampleRate = 12000;
-        const duration = audioBuffer.duration;
-        
-        const OfflineCtxClass = window.OfflineAudioContext || (window as any).webkitOfflineAudioContext;
-        const offlineCtx = new OfflineCtxClass(1, Math.max(1, Math.floor(duration * targetSampleRate)), targetSampleRate);
-        
-        const source = offlineCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(offlineCtx.destination);
-        source.start();
-        
-        const resampledBuffer = await offlineCtx.startRendering();
-
-        const wavBytes = encodeWAV(resampledBuffer);
-        const blob = new Blob([wavBytes], { type: 'audio/wav' });
-        
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const result = reader.result as string;
-                if (result && result.length < base64.length) {
-                    resolve(result);
-                } else {
-                    resolve(base64);
-                }
-            };
-            reader.readAsDataURL(blob);
-        });
-    } catch (err) {
-        console.error('Audio compression failed, using original:', err);
-        return base64;
-    }
-}
-
-export async function compressVideoBase64(base64: string): Promise<string> {
-    if (typeof window === 'undefined' || typeof document === 'undefined') {
-        return base64;
-    }
-
-    if (base64.length < 30000) {
-        return base64;
-    }
-
-    return new Promise((resolve) => {
-        let isResolved = false;
-        const done = (result: string) => {
-            if (!isResolved) {
-                isResolved = true;
-                resolve(result);
-            }
-        };
-
-        const safetyTimeout = setTimeout(() => {
-            console.warn('Video compression timed out, using original.');
-            done(base64);
-        }, 10000);
-
-        try {
-            const video = document.createElement('video');
-            video.muted = true;
-            video.playsInline = true;
-            video.crossOrigin = 'anonymous';
-
-            video.onloadedmetadata = () => {
-                try {
-                    const width = video.videoWidth;
-                    const height = video.videoHeight;
-                    const duration = video.duration || 5;
-
-                    if (!width || !height) {
-                        clearTimeout(safetyTimeout);
-                        done(base64);
-                        return;
-                    }
-
-                    const maxDim = 360;
-                    let targetW = width;
-                    let targetH = height;
-                    if (width > maxDim || height > maxDim) {
-                        if (width > height) {
-                            targetH = Math.round((height * maxDim) / width);
-                            targetW = maxDim;
-                        } else {
-                            targetW = Math.round((width * maxDim) / height);
-                            targetH = maxDim;
-                        }
-                    }
-
-                    const canvas = document.createElement('canvas');
-                    canvas.width = targetW;
-                    canvas.height = targetH;
-                    const ctx = canvas.getContext('2d');
-                    if (!ctx) {
-                        clearTimeout(safetyTimeout);
-                        done(base64);
-                        return;
-                    }
-
-                    if (typeof (canvas as any).captureStream !== 'function' || typeof window.MediaRecorder === 'undefined') {
-                        clearTimeout(safetyTimeout);
-                        done(base64);
-                        return;
-                    }
-
-                    const stream = (canvas as any).captureStream(12);
-                    const mimeTypes = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4;codecs=avc1'];
-                    let chosenMime = '';
-                    for (const mime of mimeTypes) {
-                        if (MediaRecorder.isTypeSupported(mime)) {
-                            chosenMime = mime;
-                            break;
-                        }
-                    }
-
-                    const options: any = { videoBitsPerSecond: 100000 };
-                    if (chosenMime) options.mimeType = chosenMime;
-
-                    const mediaRecorder = new MediaRecorder(stream, options);
-                    const chunks: Blob[] = [];
-
-                    mediaRecorder.ondataavailable = (event) => {
-                        if (event.data && event.data.size > 0) {
-                            chunks.push(event.data);
-                        }
-                    };
-
-                    let animationId: number;
-                    const drawLoop = () => {
-                        if (video.paused || video.ended) return;
-                        ctx.drawImage(video, 0, 0, targetW, targetH);
-                        animationId = requestAnimationFrame(drawLoop);
-                    };
-
-                    const stopAndFinish = () => {
-                        try {
-                            cancelAnimationFrame(animationId);
-                            if (mediaRecorder.state !== 'inactive') {
-                                mediaRecorder.stop();
-                            }
-                        } catch (e) {
-                            clearTimeout(safetyTimeout);
-                            done(base64);
-                        }
-                    };
-
-                    mediaRecorder.onstop = () => {
-                        try {
-                            clearTimeout(safetyTimeout);
-                            const blob = new Blob(chunks, { type: chosenMime || 'video/webm' });
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                                const compressedResult = reader.result as string;
-                                if (compressedResult && compressedResult.length < base64.length) {
-                                    done(compressedResult);
-                                } else {
-                                    done(base64);
-                                }
-                            };
-                            reader.readAsDataURL(blob);
-                        } catch (e) {
-                            done(base64);
-                        }
-                    };
-
-                    mediaRecorder.start();
-                    video.play().catch(() => stopAndFinish());
-                    animationId = requestAnimationFrame(drawLoop);
-                    video.onended = stopAndFinish;
-                    setTimeout(stopAndFinish, Math.min(20, duration) * 1000 + 100);
-
-                } catch (innerErr) {
-                    clearTimeout(safetyTimeout);
-                    done(base64);
-                }
-            };
-
-            video.onerror = () => {
-                clearTimeout(safetyTimeout);
-                done(base64);
-            };
-
-            video.src = base64;
-            video.load();
-
-        } catch (err) {
-            clearTimeout(safetyTimeout);
-            done(base64);
-        }
-    });
-}
-
-export async function compressProjectAssets(
-    projectData: ProjectData, 
-    onProgress?: (msg: string) => void
-): Promise<ProjectData> {
-    // Deep clone so we do not mutate the main editor state
-    const data = JSON.parse(JSON.stringify(projectData)) as ProjectData;
-    const compressionCache = new Map<string, string>();
-    const base64Values: { obj: any; key: string; value: string; typeHint?: string }[] = [];
-    
-    function scan(obj: any) {
-        if (!obj || typeof obj !== 'object') return;
-        for (const key in obj) {
-            if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                const val = obj[key];
-                if (typeof val === 'string' && val.startsWith('data:')) {
-                    base64Values.push({ 
-                        obj, 
-                        key, 
-                        value: val,
-                        typeHint: obj.type || undefined
-                    });
-                } else if (typeof val === 'object') {
-                    scan(val);
-                }
-            }
-        }
-    }
-    
-    scan(data);
-    
-    if (base64Values.length === 0) {
-        return data;
-    }
-    
-    const total = base64Values.length;
-    let current = 0;
-    
-    for (const item of base64Values) {
-        current++;
-        const val = item.value;
-        
-        if (compressionCache.has(val)) {
-            item.obj[item.key] = compressionCache.get(val)!;
-            continue;
-        }
-        
-        const name = item.obj.name ? ` "${item.obj.name}"` : '';
-        if (onProgress) {
-            onProgress(`Reduciendo peso de recurso ${current}/${total}${name}...`);
-        }
-        
-        let compressed = val;
-        try {
-            if (val.startsWith('data:image/') || item.typeHint === 'image') {
-                compressed = await compressImageBase64(val);
-            } else if (val.startsWith('data:audio/') || item.typeHint === 'audio') {
-                compressed = await compressAudioBase64(val);
-            } else if (val.startsWith('data:video/') || item.typeHint === 'video') {
-                compressed = await compressVideoBase64(val);
-            }
-        } catch (e) {
-            console.error('Compression of asset failed:', e);
-        }
-        
-        compressionCache.set(val, compressed);
-        item.obj[item.key] = compressed;
-    }
-    
-    if (onProgress) {
-        onProgress('¡Optimización completada!');
-    }
-    
-    return data;
-}

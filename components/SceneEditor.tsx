@@ -149,8 +149,8 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
 
   const handleObjectMouseDown = (e: React.MouseEvent<HTMLDivElement>, obj: GameObjectWithAbsPos) => {
     e.stopPropagation();
+    if (isSpacePressed.current || isPanning) return;
     onSelect(obj.id);
-    if (isSpacePressed.current) return;
     
     const parent = obj.parentId ? localObjectsWithAbsPos.find(o => o.id === obj.parentId) : null;
     const parentAbsolutePos = parent ? parent.absPos : { x: 0, y: 0 };
@@ -194,8 +194,6 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
   };
 
   const handleSceneMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target !== sceneRef.current) return;
-
     if (e.button === 1 || e.button === 2 || (e.button === 0 && isSpacePressed.current)) {
       e.preventDefault();
       setIsPanning(true);
@@ -206,8 +204,6 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
   };
 
   const handleSceneTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.target !== sceneRef.current) return;
-    
     if (e.touches.length === 2) {
       e.preventDefault();
       setIsPanning(false);
@@ -219,7 +215,6 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
         mid: { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 },
       };
     } else if (e.touches.length === 1) {
-        e.preventDefault();
         onSelect(null);
         lastTouchPoint.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     }
@@ -489,9 +484,22 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
   };
 
 
+  const resolveImageUrl = (obj: GameObject): string | undefined => {
+    if (!obj.imageUrl && !obj.assetId) return undefined;
+    let url = obj.imageUrl || '';
+    if (url && (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/'))) {
+      return url;
+    }
+    const assetId = obj.assetId || obj.imageUrl;
+    const found = assets?.find(a => a.id === assetId || a.name === assetId);
+    if (found?.url) return found.url;
+    return url || undefined;
+  };
+
   const renderObject = (obj: GameObjectWithAbsPos) => {
     const isDraggingThis = draggingState?.id === obj.id;
-    const isNode = obj.color === 'transparent' && !obj.imageUrl;
+    const resolvedImageUrl = resolveImageUrl(obj);
+    const isNode = obj.color === 'transparent' && !resolvedImageUrl;
     const isDropTarget = dragOverObjectId === obj.id;
     const { absPos } = obj;
 
@@ -504,10 +512,7 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
       width: obj.width,
       height: obj.height,
       zIndex: isDraggingThis ? 1000 : obj.zIndex,
-      backgroundColor: obj.imageUrl || isNode ? 'transparent' : obj.color,
-      backgroundImage: obj.imageUrl ? `url(${obj.imageUrl})` : 'none',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
+      backgroundColor: resolvedImageUrl || isNode ? 'transparent' : obj.color,
       transformOrigin: 'center',
       transform: `rotate(${obj.rotation || 0}deg) scale(${scaleX}, ${scaleY}) ${isDraggingThis && draggingState?.type === 'move' ? 'scale(1.05)' : ''}`,
       opacity: isDraggingThis ? 0.85 : 1,
@@ -516,6 +521,7 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
       alignItems: 'center',
       justifyContent: 'center',
       textAlign: 'center',
+      overflow: 'hidden',
       border: isNode ? `1px dashed ${selectedId === obj.id ? '#6366F1' : 'rgba(255, 255, 255, 0.5)'}` : (isDropTarget ? '2px solid #6366F1' : 'none')
     };
 
@@ -531,17 +537,26 @@ const SceneEditor: React.FC<SceneEditorProps> = ({ scene, objects, assets, selec
         className={`absolute cursor-grab transition-all duration-75 ${isDraggingThis ? 'cursor-grabbing' : ''}`}
         style={style}
       >
+        {resolvedImageUrl && (
+          <img 
+            src={resolvedImageUrl} 
+            alt={obj.name}
+            className="w-full h-full object-contain pointer-events-none select-none"
+            draggable={false}
+            referrerPolicy="no-referrer"
+          />
+        )}
         {obj.modelUrl && (
           <div className="absolute top-1 right-1 bg-pink-600 text-[8px] font-black text-white px-1 py-0.5 rounded shadow-lg border border-white/20 select-none uppercase tracking-wider z-20 scale-90">
             📦 3D
           </div>
         )}
         {isNode && ( <div className="absolute w-full h-full"> <div className="absolute top-1/2 left-0 w-full h-[1px] bg-white/50 -translate-y-1/2"></div> <div className="absolute left-1/2 top-0 h-full w-[1px] bg-white/50 -translate-x-1/2"></div> </div> )}
-        {obj.isUI && obj.text && <span className="p-1 select-none overflow-hidden font-bold text-white" style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}> {obj.text} </span>}
-        {!obj.isUI && selectedId === obj.id && <div className="absolute -top-5"><span className="text-xs text-white p-1 bg-black bg-opacity-50 select-none rounded-sm" style={{transform: `scale(${1/zoom})`, transformOrigin: 'bottom center'}}>{obj.name}</span></div>}
+        {obj.isUI && obj.text && <span className="p-1 select-none overflow-hidden font-bold text-white z-10" style={{ transform: scaleX < 0 ? 'scaleX(-1)' : 'none' }}> {obj.text} </span>}
+        {!obj.isUI && selectedId === obj.id && <div className="absolute -top-5 z-20"><span className="text-xs text-white p-1 bg-black bg-opacity-50 select-none rounded-sm" style={{transform: `scale(${1/zoom})`, transformOrigin: 'bottom center'}}>{obj.name}</span></div>}
          {selectedId === obj.id && obj.useCustomCollision && obj.collision && (
             <div 
-                className="absolute pointer-events-none bg-blue-500 bg-opacity-30 border-2 border-blue-400"
+                className="absolute pointer-events-none bg-blue-500 bg-opacity-30 border-2 border-blue-400 z-10"
                 style={{
                     left: obj.collision.offsetX,
                     top: obj.collision.offsetY,

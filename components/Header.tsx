@@ -12,7 +12,8 @@ import {
   Layout as LayoutIcon,
   HelpCircle,
   Database,
-  Sparkles
+  Sparkles,
+  Shield
 } from 'lucide-react';
 import { useLanguage } from '../LanguageContext';
 import { Language } from '../translations';
@@ -36,6 +37,7 @@ interface HeaderProps {
   onUpdateProjectData: (updates: Partial<ProjectData>) => void;
   onAddObject: (props?: Partial<GameObject>) => void;
   onOpenCharacterSkins?: () => void;
+  onOpenPrivacyPolicy?: () => void;
 }
 
 const GAME_ICONS = ['🎮', '👾', '🚀', '🧱', '🤠', '⚔️', '⚽', '🪄', '🏰', '💎', '🍎', '🦖', '👻', '👽', '👑', '🌟', '🐱', '🦊', '🦄', '🍕', '🚗', '✈️', '🏝️', '🌋', '🎯', '🎸', '🎨', '🧩', '🔑', '❤️'];
@@ -44,7 +46,7 @@ const Header: React.FC<HeaderProps> = ({
   onSave, isPlaying, onTogglePlay, onExport, onViewCode, onReturnToStart, onImportProject, projectName, onUpdateProjectName,
   projectIcon, onUpdateProjectIcon,
   activeScene, projectData, onUpdateProjectData, onAddObject,
-  onOpenCharacterSkins
+  onOpenCharacterSkins, onOpenPrivacyPolicy
 }) => {
   const { t, language, setLanguage } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,8 +177,8 @@ const Header: React.FC<HeaderProps> = ({
       {/* Right Controls */}
       <div className="flex items-center justify-end gap-1 flex-1">
         <div className="hidden lg:flex items-center gap-1 mr-2">
-            <button className="p-1.5 text-gray-500 hover:text-white"><Database size={14} /></button>
-            <button className="p-1.5 text-gray-500 hover:text-white"><HelpCircle size={14} /></button>
+            <button className="p-1.5 text-gray-500 hover:text-white" title="Base de Datos"><Database size={14} /></button>
+            <button className="p-1.5 text-gray-500 hover:text-white" title="Ayuda"><HelpCircle size={14} /></button>
         </div>
 
         <div className="h-4 w-[1px] bg-white/10 mx-1" />

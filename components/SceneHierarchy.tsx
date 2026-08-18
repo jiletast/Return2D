@@ -804,7 +804,6 @@ const SceneHierarchy: React.FC<SceneHierarchyProps> = ({
                 <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest block mb-2 px-1">Editores</span>
                 {[
                     { label: 'Animaciones', icon: <Cpu size={14} />, action: onOpenAnimationEditor },
-                    { label: 'Animación a Poses', icon: <Box size={14} className="text-pink-400 animate-pulse" />, action: onOpenPoseAnimationEditor },
                     { label: 'Sprite Editor', icon: <ImageIcon size={14} />, action: () => onOpenSpriteEditor(null) },
                 ].map((item, i) => (
                     <button 
